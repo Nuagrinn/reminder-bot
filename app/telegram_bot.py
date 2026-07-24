@@ -41,6 +41,8 @@ from app.adapters.telegram.formatters import (
 )
 from app.adapters.telegram.keyboards import (
     CANCEL_EVENT_PREFIX,
+    CLARIFY_CANCEL_PREFIX,
+    CLARIFY_PREFIX,
     CONFIRM_REMINDER_PREFIX,
     DELETE_CANCEL_PREFIX,
     DELETE_MENU_PREFIX,
@@ -50,6 +52,7 @@ from app.adapters.telegram.keyboards import (
     DONE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     SNOOZE_PREFIX,
+    clarification_keyboard,
     confirmation_keyboard,
     delete_scope_keyboard,
     due_keyboard,
@@ -66,6 +69,7 @@ from app.services import AppServices
 
 log = logging.getLogger(__name__)
 PENDING_TTL_MINUTES = 30
+DEFAULT_TIME_CLARIFICATION_OPTIONS = ("сегодня", "завтра", "через час")
 
 
 @dataclass(frozen=True)
@@ -277,7 +281,7 @@ async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         parse_result=parse_result,
         created_at=now,
     )
-    keyboard = confirmation_keyboard(pending_id) if _can_confirm(parse_result) else None
+    keyboard = _pending_inline_keyboard(pending_id, parse_result)
     await _answer_long(
         update,
         format_parse_confirmation(parse_result),
@@ -289,6 +293,65 @@ async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
 def _can_confirm(parse_result: ReminderParseResult) -> bool:
     payload = parse_result.payload
     return payload.get("intent") == "create" and payload.get("status") == "ok" and bool(payload.get("items"))
+
+
+def _needs_clarification(parse_result: ReminderParseResult) -> bool:
+    return parse_result.payload.get("status") == "needs_clarification"
+
+
+def _pending_inline_keyboard(pending_id: str, parse_result: ReminderParseResult):
+    if _can_confirm(parse_result):
+        return confirmation_keyboard(pending_id)
+    if _needs_clarification(parse_result):
+        return clarification_keyboard(pending_id, _clarification_options(parse_result))
+    return None
+
+
+def _clarification_options(parse_result: ReminderParseResult) -> list[str]:
+    payload = parse_result.payload
+    clarification = payload.get("clarification") if isinstance(payload.get("clarification"), dict) else {}
+    raw_options = clarification.get("options") if isinstance(clarification.get("options"), list) else []
+    options = _clean_clarification_options(raw_options)
+    question = str(clarification.get("question") or "").casefold()
+    if not options and _looks_like_time_question(question):
+        options = list(DEFAULT_TIME_CLARIFICATION_OPTIONS)
+    return options[:4]
+
+
+def _clean_clarification_options(raw_options: list[object]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw_option in raw_options:
+        option = str(raw_option).strip()
+        if not option:
+            continue
+        key = option.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(option)
+    return cleaned
+
+
+def _looks_like_time_question(question: str) -> bool:
+    return any(marker in question for marker in ("когда", "дата", "дату", "время", "времен"))
+
+
+def _apply_clarification(raw_text: str, option: str) -> str:
+    raw_text = raw_text.strip()
+    option = option.strip()
+    if not raw_text:
+        return option
+    if not option:
+        return raw_text
+    return f"{raw_text} {option}"
+
+
+def _short_log_text(value: str, limit: int = 160) -> str:
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."
 
 
 async def _occurrences_for_range(
@@ -517,6 +580,82 @@ async def discard_reminder_callback(update: Update, context: ContextTypes.DEFAUL
     await query.edit_message_text("Ок, не сохраняю.")
 
 
+async def clarify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(CLARIFY_PREFIX)
+    try:
+        pending_id, raw_option_index = payload.rsplit(":", 1)
+        option_index = int(raw_option_index)
+    except ValueError:
+        log.warning("Malformed clarification callback payload=%r", payload)
+        await query.answer("Не понял вариант", show_alert=True)
+        return
+
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    _cleanup_pending(context, now=now)
+    pending = _pending_reminders(context).get(pending_id)
+    if not pending:
+        log.info("Clarification callback expired pending_id=%s", pending_id)
+        await query.answer("Черновик устарел", show_alert=True)
+        await query.edit_message_text("Черновик напоминания устарел. Отправь команду еще раз.")
+        return
+
+    options = _clarification_options(pending.parse_result)
+    if option_index < 0 or option_index >= len(options):
+        log.warning(
+            "Clarification option not found pending_id=%s option_index=%s options=%s",
+            pending_id,
+            option_index,
+            options,
+        )
+        await query.answer("Вариант устарел", show_alert=True)
+        return
+
+    option = options[option_index]
+    resolved_text = _apply_clarification(pending.request.raw_text, option)
+    request = _parse_request(services.settings, resolved_text, pending.request.source_kind, now)
+    log.info(
+        "Reminder clarification selected pending_id=%s option=%r original=%r resolved=%r",
+        pending_id,
+        option,
+        _short_log_text(pending.request.raw_text),
+        _short_log_text(resolved_text),
+    )
+    try:
+        parse_result = await asyncio.to_thread(services.intake.parse, request)
+    except Exception as exc:
+        log.exception("Reminder clarification parse failed pending_id=%s", pending_id)
+        await query.answer("Не разобрал", show_alert=True)
+        await query.edit_message_text(f"Не смог разобрать уточнение.\n\n{exc}")
+        return
+
+    _pending_reminders(context)[pending_id] = PendingReminder(
+        request=request,
+        parse_result=parse_result,
+        created_at=now,
+    )
+    await query.answer("Уточнил")
+    await query.edit_message_text(
+        format_parse_confirmation(parse_result),
+        parse_mode=ParseMode.HTML,
+        reply_markup=_pending_inline_keyboard(pending_id, parse_result),
+    )
+
+
+async def clarify_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    pending_id = (query.data or "").removeprefix(CLARIFY_CANCEL_PREFIX)
+    _pending_reminders(context).pop(pending_id, None)
+    log.info("Reminder clarification cancelled pending_id=%s", pending_id)
+    await query.answer("Отменено")
+    await query.edit_message_text("Ок, не сохраняю.")
+
+
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -540,6 +679,8 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CommandHandler("add", add_command))
     app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(clarify_callback, pattern=f"^{CLARIFY_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(clarify_cancel_callback, pattern=f"^{CLARIFY_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))

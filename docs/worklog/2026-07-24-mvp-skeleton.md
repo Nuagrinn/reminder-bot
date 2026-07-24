@@ -232,6 +232,27 @@ Date: 2026-07-24
   - occurrence detail formatter;
   - clarification logging.
 
+## Clarification Buttons
+
+- Added inline clarification keyboard for parser results with
+  `status=needs_clarification`.
+- Current quick options:
+  - parser-provided `clarification.options`;
+  - fallback `сегодня`, `завтра`, `через час` for generic time questions.
+- Telegram callback stores the option index and resolves the actual option from
+  the pending draft, so future parser-generated options do not require new
+  callback formats.
+- On button click the bot:
+  - appends the selected option to the original text;
+  - reruns the regular parser flow;
+  - updates the same message with either confirmation buttons or another
+    clarification prompt.
+- Added clarification callback logs:
+  - selected option;
+  - original phrase;
+  - resolved phrase.
+- Added tests for clarification keyboard callback data.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -61,32 +61,44 @@ Date: 2026-07-24
    - Logs include provider/model, prompt version, question, options and short
      raw text.
 
+8. Clarification buttons - done
+   - If date/time is missing, Telegram shows inline quick options.
+   - Current options come from parser `clarification.options`; for generic time
+     questions the fallback is `сегодня`, `завтра`, `через час`.
+   - Button click reuses the pending draft, appends the selected option to the
+     original phrase and reruns the parser.
+   - If the resolved parse is OK, the bot shows the normal confirmation screen.
+   - Clarification selections are logged at INFO level.
+
 ## Recommended Next Order
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
    parse poorly.
 2. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
-3. Add clarification buttons for missing date/time.
-4. Add pagination for long `/upcoming`, `/week`, `/month` lists.
+3. Add pagination for long `/upcoming`, `/week`, `/month` lists.
+4. Improve clarification UX after real usage:
+   - add custom date/time entry from button;
+   - optionally add richer option generation from Claude.
 
 ## P1 - Near Next
 
-1. Clarification buttons
-   - If date/time is missing, show suggested buttons instead of plain text only.
-   - Examples: `сегодня`, `завтра`, `через час`.
-
-2. Edit before save
+1. Edit before save
    - In the confirmation screen, add quick actions:
      - change date;
      - change time;
      - change reminder offset;
      - cancel.
 
-3. Better list UX
+2. Better list UX
    - Pagination for `/upcoming`, `/week`, `/month`.
    - Optional back button from detail to the previous list.
    - Optional snooze from list detail when there is a pending job.
+
+3. Clarification improvements
+   - Button for custom date/time text.
+   - Button for custom reminder offset when parser understands the event but
+     uncertainty is only in notification timing.
 
 ## P2 - Later
 

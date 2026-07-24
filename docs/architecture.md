@@ -35,6 +35,7 @@ Telegram text/voice
   - yearly birthdays/anniversaries.
 - Materialized occurrences and notification jobs.
 - Confirmation flow before saving parsed reminders.
+- Clarification flow for missing date/time before confirmation.
 - Daily agenda message at configured morning time.
 - Telegram commands:
   - `/start`;
@@ -124,6 +125,27 @@ row opens an occurrence detail card with:
 
 The delete action reuses the scoped deletion model for recurring reminders.
 
+## Clarification Flow
+
+When parser status is `needs_clarification`, Telegram keeps the same short-lived
+pending reminder draft and renders inline option buttons from parser
+`clarification.options`.
+
+Current default quick options for time questions:
+
+- `сегодня`;
+- `завтра`;
+- `через час`.
+
+Button callbacks store only the option index, not the Russian text itself. On
+click the bot resolves the option from the pending draft, appends it to the
+original phrase and sends the resolved phrase through the normal parser and
+confirmation flow again.
+
+If parsing succeeds, the user sees the regular `Сохранить` / `Отмена`
+confirmation screen. If the result still needs clarification, the bot updates
+the same message with another clarification prompt.
+
 ## Deletion Model
 
 One-off deletion cancels the whole event and its pending notification jobs.
@@ -160,6 +182,9 @@ Clarification results are logged at INFO level by
 - clarification question;
 - suggested options;
 - shortened raw text.
+
+Telegram clarification callbacks also log selected option, original phrase and
+resolved phrase in `app.telegram_bot`.
 
 ## Next work
 

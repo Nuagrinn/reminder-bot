@@ -16,6 +16,8 @@ DELETE_SERIES_FROM_PREFIX = "delete_series_from:"
 DELETE_CANCEL_PREFIX = "delete_cancel:"
 CONFIRM_REMINDER_PREFIX = "confirm_reminder:"
 DISCARD_REMINDER_PREFIX = "discard_reminder:"
+CLARIFY_PREFIX = "clarify:"
+CLARIFY_CANCEL_PREFIX = "clarify_cancel:"
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -32,6 +34,25 @@ def confirmation_keyboard(pending_id: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Отмена", callback_data=f"{DISCARD_REMINDER_PREFIX}{pending_id}")],
         ]
     )
+
+
+def clarification_keyboard(pending_id: str, options: list[str]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    option_row: list[InlineKeyboardButton] = []
+    for index, option in enumerate(options[:4]):
+        option_row.append(
+            InlineKeyboardButton(
+                _clarification_button_label(option),
+                callback_data=f"{CLARIFY_PREFIX}{pending_id}:{index}",
+            )
+        )
+        if len(option_row) == 2:
+            rows.append(option_row)
+            option_row = []
+    if option_row:
+        rows.append(option_row)
+    rows.append([InlineKeyboardButton("Отмена", callback_data=f"{CLARIFY_CANCEL_PREFIX}{pending_id}")])
+    return InlineKeyboardMarkup(rows)
 
 
 def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
@@ -86,3 +107,11 @@ def _occurrence_button_label(index: int, item: OccurrenceView) -> str:
     if len(title) > 34:
         title = f"{title[:31]}..."
     return f"{index}. {item.occurs_at:%H:%M} · {title}"
+
+
+def _clarification_button_label(option: str) -> str:
+    label = option.strip() or "Уточнить"
+    label = f"{label[0].upper()}{label[1:]}" if label else "Уточнить"
+    if len(label) > 34:
+        label = f"{label[:31]}..."
+    return label

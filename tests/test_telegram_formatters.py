@@ -5,6 +5,8 @@ from unittest import TestCase
 
 from app.adapters.telegram.formatters import format_daily_agenda, format_occurrence_detail, format_parse_confirmation
 from app.adapters.telegram.keyboards import (
+    CLARIFY_CANCEL_PREFIX,
+    CLARIFY_PREFIX,
     CONFIRM_REMINDER_PREFIX,
     DELETE_MENU_PREFIX,
     DELETE_OCCURRENCE_PREFIX,
@@ -12,6 +14,7 @@ from app.adapters.telegram.keyboards import (
     DONE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     SNOOZE_PREFIX,
+    clarification_keyboard,
     confirmation_keyboard,
     delete_scope_keyboard,
     due_keyboard,
@@ -53,6 +56,14 @@ class TelegramFormattersTest(TestCase):
         keyboard = confirmation_keyboard("pending_123")
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{CONFIRM_REMINDER_PREFIX}pending_123")
+
+    def test_clarification_keyboard_uses_option_indexes(self) -> None:
+        keyboard = clarification_keyboard("pending_123", ["сегодня", "завтра", "через час"])
+
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{CLARIFY_PREFIX}pending_123:0")
+        self.assertEqual(keyboard.inline_keyboard[0][1].callback_data, f"{CLARIFY_PREFIX}pending_123:1")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{CLARIFY_PREFIX}pending_123:2")
+        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{CLARIFY_CANCEL_PREFIX}pending_123")
 
     def test_due_keyboard_opens_delete_scope_menu(self) -> None:
         job = NotificationJobView(

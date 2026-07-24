@@ -414,6 +414,35 @@ Date: 2026-07-24
 - Added callback logging for successful hide and Telegram delete/edit failures.
 - Added regression tests for the keyboard callback data and handler behavior.
 
+## First VPS Deployment
+
+- Deployed reminder-bot to VPS `213.239.157.243`.
+- Runtime layout:
+  - app: `/opt/reminder-bot`;
+  - service: `reminder-bot.service`;
+  - database: `/opt/reminder-bot/data/reminder.sqlite3`;
+  - voice files: `/opt/reminder-bot/data/voice`;
+  - shared STT binary:
+    `/opt/assistant-shared/whisper.cpp/bin/whisper-cli`;
+  - shared STT model:
+    `/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin`.
+- Installed `.env` on VPS from local secrets with VPS-safe paths.
+- Applied migrations:
+  - `001_initial`;
+  - `002_occurrence_all_day_override`;
+  - `003_app_settings`.
+- Verified on VPS:
+  - unit tests: 85 passed;
+  - compile check: OK;
+  - `stt-check`: OK;
+  - Claude parser smoke test: OK.
+- Started `reminder-bot.service`; service is active and sends the version
+  activation notification.
+- Stopped local Windows polling process before starting VPS polling to avoid
+  Telegram token conflicts.
+- Fixed `scripts/vps-bootstrap.sh` so shared whisper setup runs from the app
+  user's home directory instead of inheriting `/root`.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

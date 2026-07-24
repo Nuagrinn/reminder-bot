@@ -69,7 +69,10 @@ fi
 
 sudo -u "$APP_USER" \
   ASSISTANT_WHISPER_CPP_DIR="$ASSISTANT_SHARED_DIR/whisper.cpp" \
-  bash "$APP_DIR/scripts/setup-shared-whisper-cpp-linux.sh" "$WHISPER_MODEL"
+  bash -c 'cd "$1" && bash "$2" "$3"' _ \
+  "$APP_HOME" \
+  "$APP_DIR/scripts/setup-shared-whisper-cpp-linux.sh" \
+  "$WHISPER_MODEL"
 
 if [ ! -f "$APP_DIR/.env" ]; then
   cp "$APP_DIR/deploy/env.vps.example" "$APP_DIR/.env"

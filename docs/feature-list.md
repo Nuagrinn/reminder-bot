@@ -112,12 +112,17 @@ Date: 2026-07-24
    - The last notified commit is stored in `app_settings`, so normal restarts of
      the same version do not spam.
 
-12. VPS deploy kit - MVP ready
+12. VPS deploy kit - deployed
    - `deploy/env.vps.example`;
    - hardened `deploy/systemd/reminder-bot.service`;
    - `scripts/setup-shared-whisper-cpp-linux.sh`;
    - `scripts/vps-bootstrap.sh`;
    - `scripts/vps-deploy.sh`.
+   - First VPS deployment completed on `213.239.157.243`:
+     - app path: `/opt/reminder-bot`;
+     - service: `reminder-bot.service`;
+     - shared STT model:
+       `/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin`.
 
 ## Recommended Next Order
 

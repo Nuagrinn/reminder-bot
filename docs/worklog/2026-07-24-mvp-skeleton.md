@@ -84,6 +84,9 @@ Date: 2026-07-24
 - Added CLI checks:
   - `python -m app.cli stt-check`;
   - `python -m app.cli stt-preview path/to/audio.oga`.
+- Local polling was started successfully. HTTP client logs were moved to
+  WARNING level so Telegram API URLs with bot tokens are not printed in INFO
+  logs.
 
 ## Notes
 

@@ -45,6 +45,12 @@ from app.services import AppServices
 log = logging.getLogger(__name__)
 
 
+def configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    for logger_name in ("httpx", "httpcore", "telegram", "telegram.ext"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
 def _services(context: ContextTypes.DEFAULT_TYPE) -> AppServices:
     return context.application.bot_data["services"]
 
@@ -310,7 +316,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
 
 
 def run_bot() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    configure_logging()
     settings = load_settings()
     services = AppServices(settings)
     app = build_application(settings, services)

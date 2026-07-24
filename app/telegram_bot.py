@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from time import perf_counter
@@ -26,23 +27,36 @@ from app.adapters.telegram.formatters import (
     format_event_deleted,
     format_intake_result,
     format_occurrence_list,
+    format_parse_confirmation,
     format_snoozed,
     format_start,
 )
 from app.adapters.telegram.keyboards import (
     CANCEL_EVENT_PREFIX,
+    CONFIRM_REMINDER_PREFIX,
+    DISCARD_REMINDER_PREFIX,
     DONE_PREFIX,
     SNOOZE_PREFIX,
+    confirmation_keyboard,
     due_keyboard,
     main_keyboard,
 )
 from app.config import Settings, load_settings
+from app.core.ids import new_id
 from app.core.time import local_now
-from app.features.reminder_intake.agent import ReminderParseRequest
+from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.services import AppServices
 
 
 log = logging.getLogger(__name__)
+PENDING_TTL_MINUTES = 30
+
+
+@dataclass(frozen=True)
+class PendingReminder:
+    request: ReminderParseRequest
+    parse_result: ReminderParseResult
+    created_at: datetime
 
 
 def configure_logging() -> None:
@@ -57,6 +71,19 @@ def _services(context: ContextTypes.DEFAULT_TYPE) -> AppServices:
 
 def _owner_id(context: ContextTypes.DEFAULT_TYPE) -> int:
     return int(context.application.bot_data["owner_id"])
+
+
+def _pending_reminders(context: ContextTypes.DEFAULT_TYPE) -> dict[str, PendingReminder]:
+    store = context.application.bot_data.setdefault("pending_reminders", {})
+    return store
+
+
+def _cleanup_pending(context: ContextTypes.DEFAULT_TYPE, *, now: datetime) -> None:
+    store = _pending_reminders(context)
+    expired_at = now - timedelta(minutes=PENDING_TTL_MINUTES)
+    for pending_id, pending in list(store.items()):
+        if pending.created_at < expired_at:
+            store.pop(pending_id, None)
 
 
 async def _reject_non_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -99,19 +126,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
+    await _show_range(update, context, title="Сегодня", days=1, empty_text="На сегодня напоминаний нет.")
+
+
+async def week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    await _show_range(update, context, title="Неделя", days=7, empty_text="На неделю напоминаний нет.")
+
+
+async def month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    await _show_range(update, context, title="Месяц", days=31, empty_text="На месяц напоминаний нет.", limit=100)
+
+
+async def _show_range(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    title: str,
+    days: int,
+    empty_text: str,
+    limit: int = 50,
+) -> None:
     services = _services(context)
     now = local_now(services.settings.timezone)
     start_at = datetime.combine(now.date(), datetime.min.time())
-    end_at = start_at + timedelta(days=1)
+    end_at = start_at + timedelta(days=days)
+    await asyncio.to_thread(services.events.materialize_all, now=now)
     items = await asyncio.to_thread(
         services.events.list_occurrences,
         start_at=start_at,
         end_at=end_at,
-        limit=50,
+        limit=limit,
     )
     await _answer_long(
         update,
-        format_occurrence_list(items, title="Сегодня", empty_text="На сегодня напоминаний нет."),
+        format_occurrence_list(items, title=title, empty_text=empty_text),
         parse_mode=ParseMode.HTML,
         reply_markup=main_keyboard(),
     )
@@ -139,7 +191,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not text:
         await _answer_long(update, "Напиши текст после /add или просто отправь сообщение.", reply_markup=main_keyboard())
         return
-    await _create_from_text(update, context, text, source_kind="text")
+    await _preview_from_text(update, context, text, source_kind="text")
 
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -151,13 +203,19 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if text in ("📆 Сегодня", "Сегодня"):
         await today(update, context)
         return
+    if text in ("🗓 Неделя", "Неделя"):
+        await week(update, context)
+        return
+    if text in ("🗂 Месяц", "Месяц"):
+        await month(update, context)
+        return
     if text in ("📋 Ближайшие", "Ближайшие"):
         await upcoming(update, context)
         return
     if text in ("❔ Помощь", "Помощь"):
         await start(update, context)
         return
-    await _create_from_text(update, context, text, source_kind="text")
+    await _preview_from_text(update, context, text, source_kind="text")
 
 
 async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -181,8 +239,8 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         log.exception("Voice processing failed")
         await wait_message.edit_text("Не смог обработать голосовое. Попробуй текстом.")
         return
-    await wait_message.edit_text(f"Распознал: {transcript}\n\nПланирую...")
-    await _create_from_text(update, context, transcript, source_kind="voice")
+    await wait_message.edit_text(f"Распознал: {transcript}\n\nРазбираю...")
+    await _preview_from_text(update, context, transcript, source_kind="voice")
     log.info("Voice processed elapsed=%.2fs", perf_counter() - started)
 
 
@@ -193,24 +251,36 @@ def _voice_audio_path(services: AppServices, file_id: str) -> Path:
     return services.settings.voice_dir / f"{stamp}-{safe}.oga"
 
 
-async def _create_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, *, source_kind: str) -> None:
+async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, *, source_kind: str) -> None:
     services = _services(context)
     now = local_now(services.settings.timezone)
+    _cleanup_pending(context, now=now)
     request = _parse_request(services.settings, text, source_kind, now)
     try:
-        result = await asyncio.to_thread(services.intake.ingest, request)
+        parse_result = await asyncio.to_thread(services.intake.parse, request)
     except Exception as exc:
         log.exception("Reminder intake failed")
         await _answer_long(update, f"Не смог разобрать напоминание.\n\n{exc}", reply_markup=main_keyboard())
         return
-    occurrences = await asyncio.to_thread(services.events.upcoming, now=now, limit=20)
-    own_occurrences = [item for item in occurrences if item.event_id in set(result.event_ids)]
+
+    pending_id = new_id("pending_")
+    _pending_reminders(context)[pending_id] = PendingReminder(
+        request=request,
+        parse_result=parse_result,
+        created_at=now,
+    )
+    keyboard = confirmation_keyboard(pending_id) if _can_confirm(parse_result) else None
     await _answer_long(
         update,
-        format_intake_result(result, own_occurrences),
+        format_parse_confirmation(parse_result),
         parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
+        reply_markup=keyboard or main_keyboard(),
     )
+
+
+def _can_confirm(parse_result: ReminderParseResult) -> bool:
+    payload = parse_result.payload
+    return payload.get("intent") == "create" and payload.get("status") == "ok" and bool(payload.get("items"))
 
 
 async def notify_due(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -277,6 +347,51 @@ async def cancel_event_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(format_event_deleted())
 
 
+async def confirm_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    pending_id = (query.data or "").removeprefix(CONFIRM_REMINDER_PREFIX)
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    _cleanup_pending(context, now=now)
+    pending = _pending_reminders(context).pop(pending_id, None)
+    if not pending:
+        await query.answer("Черновик устарел", show_alert=True)
+        await query.edit_message_text("Черновик напоминания устарел. Отправь команду еще раз.")
+        return
+
+    try:
+        result = await asyncio.to_thread(
+            services.intake.create_from_parse_result,
+            pending.request,
+            pending.parse_result,
+        )
+    except Exception as exc:
+        log.exception("Reminder confirmation failed")
+        await query.answer("Не сохранил", show_alert=True)
+        await query.edit_message_text(f"Не смог сохранить напоминание.\n\n{exc}")
+        return
+
+    occurrences = await asyncio.to_thread(services.events.upcoming, now=now, limit=20)
+    own_occurrences = [item for item in occurrences if item.event_id in set(result.event_ids)]
+    await query.answer("Сохранено")
+    await query.edit_message_text(
+        format_intake_result(result, own_occurrences),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def discard_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    pending_id = (query.data or "").removeprefix(DISCARD_REMINDER_PREFIX)
+    _pending_reminders(context).pop(pending_id, None)
+    await query.answer("Отменено")
+    await query.edit_message_text("Ок, не сохраняю.")
+
+
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -294,8 +409,12 @@ def build_application(settings: Settings, services: AppServices) -> Application:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("today", today))
+    app.add_handler(CommandHandler("week", week))
+    app.add_handler(CommandHandler("month", month))
     app.add_handler(CommandHandler("upcoming", upcoming))
     app.add_handler(CommandHandler("add", add_command))
+    app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(cancel_event_callback, pattern=f"^{CANCEL_EVENT_PREFIX}"))

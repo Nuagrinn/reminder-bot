@@ -88,6 +88,21 @@ Date: 2026-07-24
   WARNING level so Telegram API URLs with bot tokens are not printed in INFO
   logs.
 
+## Confirmation UX
+
+- Text and voice reminders no longer save immediately.
+- Intake now has two explicit phases:
+  - `parse(request)` builds structured reminder JSON;
+  - `create_from_parse_result(request, parse_result)` saves after confirmation.
+- Telegram stores short-lived pending reminders in memory for 30 minutes.
+- Added inline buttons:
+  - `Сохранить`;
+  - `Отмена`.
+- Added quick views:
+  - `/week`;
+  - `/month`;
+  - reply keyboard buttons `Неделя` and `Месяц`.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

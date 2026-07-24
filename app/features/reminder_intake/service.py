@@ -34,57 +34,53 @@ class ReminderIntakeService:
         self.events = events
 
     def ingest(self, request: ReminderParseRequest) -> IntakeResult:
-        created_at = request.now.replace(microsecond=0)
-        attempt_id = new_id("parse_")
+        parse_result = self.parse(request)
+        return self.create_from_parse_result(request, parse_result)
+
+    def parse(self, request: ReminderParseRequest) -> ReminderParseResult:
         try:
-            parse_result = self.parser.parse(request)
-            payload = parse_result.payload
-            event_ids: list[str] = []
-            if payload.get("intent") == "create" and payload.get("status") == "ok":
-                for item in payload.get("items", []):
-                    if isinstance(item, dict):
-                        event = self.events.create_from_agent_item(
-                            item,
-                            source_text=request.raw_text,
-                            source_kind=request.source_kind,
-                            now=request.now,
-                        )
-                        event_ids.append(event.id)
-            self._record_attempt(
-                attempt_id=attempt_id,
-                request=request,
-                parse_result=parse_result,
-                event_ids=event_ids,
-                status=str(payload.get("status") or "ok"),
-                error="",
-                created_at=created_at,
-            )
-            return IntakeResult(parse_result=parse_result, event_ids=event_ids)
+            return self.parser.parse(request)
         except Exception as exc:
-            payload = {
-                "schema_version": "error",
-                "intent": "unknown",
-                "status": "unsupported",
-                "raw_text": request.raw_text,
-                "items": [],
-                "clarification": {"question": "", "options": []},
-            }
-            parse_result = ReminderParseResult(
-                payload=payload,
-                provider=getattr(self.parser, "provider", "unknown"),
-                model=getattr(self.parser, "model", ""),
-                prompt_version=getattr(self.parser, "prompt_version", ""),
-            )
             self._record_attempt(
-                attempt_id=attempt_id,
+                attempt_id=new_id("parse_"),
                 request=request,
-                parse_result=parse_result,
+                parse_result=_failed_parse_result(request, self.parser),
                 event_ids=[],
                 status="failed",
                 error=str(exc),
-                created_at=created_at,
+                created_at=request.now.replace(microsecond=0),
             )
             raise
+
+    def create_from_parse_result(
+        self,
+        request: ReminderParseRequest,
+        parse_result: ReminderParseResult,
+    ) -> IntakeResult:
+        created_at = request.now.replace(microsecond=0)
+        attempt_id = new_id("parse_")
+        payload = parse_result.payload
+        event_ids: list[str] = []
+        if payload.get("intent") == "create" and payload.get("status") == "ok":
+            for item in payload.get("items", []):
+                if isinstance(item, dict):
+                    event = self.events.create_from_agent_item(
+                        item,
+                        source_text=request.raw_text,
+                        source_kind=request.source_kind,
+                        now=request.now,
+                    )
+                    event_ids.append(event.id)
+        self._record_attempt(
+            attempt_id=attempt_id,
+            request=request,
+            parse_result=parse_result,
+            event_ids=event_ids,
+            status=str(payload.get("status") or "ok"),
+            error="",
+            created_at=created_at,
+        )
+        return IntakeResult(parse_result=parse_result, event_ids=event_ids)
 
     def _record_attempt(
         self,
@@ -123,3 +119,22 @@ class ReminderIntakeService:
                 ),
             )
 
+
+def _failed_parse_result(
+    request: ReminderParseRequest,
+    parser: ReminderParserAgent,
+) -> ReminderParseResult:
+    payload = {
+        "schema_version": "error",
+        "intent": "unknown",
+        "status": "unsupported",
+        "raw_text": request.raw_text,
+        "items": [],
+        "clarification": {"question": "", "options": []},
+    }
+    return ReminderParseResult(
+        payload=payload,
+        provider=getattr(parser, "provider", "unknown"),
+        model=getattr(parser, "model", ""),
+        prompt_version=getattr(parser, "prompt_version", ""),
+    )

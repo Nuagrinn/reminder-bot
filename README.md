@@ -105,9 +105,13 @@ bash scripts/setup-shared-whisper-cpp-linux.sh medium
   напоминания.
 - Voice скачивается, транскрибируется через `assistant_toolkit.speech` и идет в
   тот же intake flow.
+- Перед сохранением бот показывает, как он понял напоминание, и ждет кнопку
+  `Сохранить`. Если распознавание/парсинг ошиблись, можно нажать `Отмена`.
 - Команды:
   - `/start`
   - `/today`
+  - `/week`
+  - `/month`
   - `/upcoming`
   - `/add текст`
 

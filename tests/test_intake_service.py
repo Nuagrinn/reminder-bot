@@ -33,7 +33,30 @@ class IntakeServiceTests(unittest.TestCase):
             self.assertEqual(attempts[0]["status"], "ok")
             self.assertEqual(len(events_rows), 1)
 
+    def test_parse_then_confirm_creates_event_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / "reminder.sqlite3", migrations_dir=MIGRATIONS_DIR)
+            db.migrate()
+            events = EventService(db, EventDefaults(timezone="Europe/Moscow"))
+            intake = ReminderIntakeService(db, FakeReminderParserAgent(), events)
+            parse_request = request("надо завтра пополнить карту наличкой")
+
+            parse_result = intake.parse(parse_request)
+            with db.session() as conn:
+                events_before = conn.execute("SELECT * FROM events").fetchall()
+                attempts_before = conn.execute("SELECT * FROM parse_attempts").fetchall()
+
+            result = intake.create_from_parse_result(parse_request, parse_result)
+            with db.session() as conn:
+                events_after = conn.execute("SELECT * FROM events").fetchall()
+                attempts_after = conn.execute("SELECT * FROM parse_attempts").fetchall()
+
+            self.assertEqual(events_before, [])
+            self.assertEqual(attempts_before, [])
+            self.assertEqual(len(result.event_ids), 1)
+            self.assertEqual(len(events_after), 1)
+            self.assertEqual(len(attempts_after), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
-

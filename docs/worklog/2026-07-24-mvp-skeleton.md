@@ -128,6 +128,33 @@ Date: 2026-07-24
   - `DAILY_AGENDA_LIMIT`.
 - Telegram JobQueue sends `План на сегодня` every day at the configured time.
 
+## Claude Parser Activation
+
+- Local `.env` now uses Claude CLI parser settings copied from the existing
+  LearnKeeper Claude setup, without storing secrets in Git.
+- Claude calls are constrained through:
+  - `CLAUDE_MODEL=claude-haiku-4-5-20251001`;
+  - `CLAUDE_MAX_BUDGET_USD=0.12`;
+  - `CLAUDE_SYSTEM_PROMPT_MODE=replace`;
+  - `ALLOW_PAID_API=false`.
+- `assistant-toolkit` was updated and pushed so the shared Claude runner:
+  - passes UTF-8 to the Windows subprocess;
+  - supports explicit budget limits;
+  - can replace the system prompt;
+  - prefers Claude structured output when available.
+- Reminder parser prompt moved to `reminder-parser-v2`.
+- User prompt is ASCII-safe JSON so Russian text survives Windows CLI transport.
+- Added normalization for compact Claude responses like:
+  - `datetime/date/time/title`;
+  - nested `reminder`;
+  - `recurrence`/`repeat`;
+  - `reminder_offset_minutes`.
+- Verified live Claude parsing:
+  - `25 июля в 15:30 оплатить счет` -> one-off datetime reminder;
+  - `каждые два дня проверять почту` -> daily recurring reminder with
+    `interval=2`.
+- Added tests for compact Claude normalization and prompt safety.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

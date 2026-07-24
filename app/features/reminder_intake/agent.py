@@ -102,6 +102,8 @@ class ClaudeCliReminderParserAgent:
         oauth_token: str,
         model: str,
         timeout_seconds: int,
+        max_budget_usd: float,
+        system_prompt_mode: str,
         allow_paid_api: bool,
     ):
         self.model = model
@@ -110,6 +112,8 @@ class ClaudeCliReminderParserAgent:
             oauth_token=oauth_token,
             model=model,
             timeout_seconds=timeout_seconds,
+            max_budget_usd=max_budget_usd,
+            system_prompt_mode=system_prompt_mode,
             allow_paid_api=allow_paid_api,
         )
 
@@ -121,12 +125,13 @@ class ClaudeCliReminderParserAgent:
                 system_prompt=build_system_prompt(request),
                 user_prompt=build_user_prompt(request),
                 json_schema=REMINDER_JSON_SCHEMA,
-                expected_keys=("intent", "status", "items"),
+                expected_keys=(),
             )
         except Exception as exc:
             raise ReminderParserError(str(exc)) from exc
+        payload = normalize_claude_payload(result.payload, request)
         return ReminderParseResult(
-            payload=result.payload,
+            payload=payload,
             provider=self.provider,
             model=self.model,
             prompt_version=self.prompt_version,
@@ -280,6 +285,296 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
     if time_text:
         return {"start_at": f"{target_date.isoformat()}T{time_text}:00", "date": target_date.isoformat(), "time": time_text}
     return {"start_at": None, "date": target_date.isoformat(), "time": None}
+
+
+def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return _clarification(request.raw_text, "Не удалось разобрать ответ парсера.", [])
+    if _is_native_payload(payload):
+        return payload
+
+    compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
+    raw_text = _clean(compact.get("raw_text")) or _clean(payload.get("raw_text")) or request.raw_text
+    if _compact_is_error(payload) or _compact_is_error(compact):
+        question = str(
+            compact.get("message")
+            or compact.get("reason")
+            or compact.get("clarification_question")
+            or payload.get("message")
+            or payload.get("reason")
+            or payload.get("clarification_question")
+            or "Нужно уточнение."
+        )
+        return _clarification(raw_text, question, [])
+
+    intent = _clean(payload.get("intent") or compact.get("intent") or payload.get("action") or compact.get("action") or "create").lower()
+    if intent in {"add", "create_reminder", "create_event", "create_task", "reminder"}:
+        intent = "create"
+    if intent != "create":
+        return _base(raw_text, intent="unknown", status="unsupported", items=[])
+
+    start_at = _clean(compact.get("start_at")) or _clean(compact.get("datetime"))
+    event_date = _clean(compact.get("date"))
+    event_time = _clean(compact.get("time"))
+    if start_at:
+        try:
+            parsed = datetime.fromisoformat(start_at)
+        except ValueError:
+            parsed = None
+        if parsed:
+            parsed = parsed.replace(tzinfo=None, microsecond=0)
+            start_at = parsed.isoformat(timespec="seconds")
+            event_date = event_date or parsed.date().isoformat()
+            event_time = event_time or parsed.strftime("%H:%M")
+
+    raw_event_type = _clean(compact.get("event_type"))
+    recurrence = _compact_recurrence(compact.get("recurrence") or compact.get("repeat") or compact.get("frequency"))
+    if recurrence.get("frequency") == "none" and raw_event_type in {"birthday", "anniversary"} and event_date:
+        birthday_date = _parse_iso_date(event_date)
+        if birthday_date:
+            recurrence = {
+                **_recurrence_none(),
+                "frequency": "yearly",
+                "months": [birthday_date.month],
+                "month_days": [birthday_date.day],
+            }
+    is_recurring = recurrence.get("frequency") != "none"
+    event_type = raw_event_type or ("habit" if is_recurring else "task")
+    if is_recurring and not event_date:
+        event_date = _recurring_start_date(request=request, time_text=event_time or None).isoformat()
+    if not is_recurring and not event_date and not start_at:
+        return _clarification(raw_text, "Когда напомнить?", ["сегодня", "завтра", "через час"])
+
+    title = _title(_clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text)
+    all_day = not bool(event_time or start_at)
+    item = {
+        "client_ref": "item_1",
+        "title": title,
+        "description": _clean(compact.get("description")),
+        "event_type": event_type if event_type in {"task", "calendar_event", "deadline", "birthday", "anniversary", "habit"} else ("habit" if is_recurring else "task"),
+        "priority": _priority(compact.get("priority")),
+        "schedule": {
+            "kind": "recurring" if is_recurring else "once",
+            "timezone": _clean(compact.get("timezone")) or request.timezone,
+            "all_day": all_day,
+            "start_at": start_at or None,
+            "date": event_date or None,
+            "time": event_time or None,
+            "precision": "datetime" if not all_day else "date",
+            "recurrence": recurrence,
+        },
+        "notification_offsets": _compact_offsets(compact),
+        "confidence": _coerce_float(compact.get("confidence") or payload.get("confidence"), default=0.7),
+        "assumptions": ["Claude compact output normalized by reminder-bot."],
+    }
+    return _base(raw_text, items=[item])
+
+
+def _is_native_payload(payload: dict[str, Any]) -> bool:
+    return all(key in payload for key in ("intent", "status", "items", "clarification"))
+
+
+def _compact_is_error(payload: dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return True
+    status = str(payload.get("status") or "").lower()
+    return status in {"error", "unsupported", "needs_clarification"} or payload.get("success") is False
+
+
+def _compact_recurrence(value: Any) -> dict[str, Any]:
+    recurrence = _recurrence_none()
+    if not value:
+        return recurrence
+    if isinstance(value, str):
+        low = value.lower()
+        daily_interval = _daily_interval(low)
+        if daily_interval:
+            return {**recurrence, "frequency": "daily", "interval": daily_interval}
+        if "every_other_day" in low or "alternate" in low:
+            return {**recurrence, "frequency": "daily", "interval": 2}
+        if "biweekly" in low or "every_two_weeks" in low:
+            return {**recurrence, "frequency": "weekly", "interval": 2}
+        if "daily" in low or "day" in low:
+            return {**recurrence, "frequency": "daily"}
+        if "weekly" in low or "week" in low:
+            return {**recurrence, "frequency": "weekly"}
+        if "monthly" in low or "month" in low:
+            return {**recurrence, "frequency": "monthly"}
+        if "yearly" in low or "annual" in low or "year" in low:
+            return {**recurrence, "frequency": "yearly"}
+        return recurrence
+    if not isinstance(value, dict):
+        return recurrence
+    frequency = _clean(value.get("frequency") or value.get("type") or value.get("unit") or "none").lower()
+    unit = _clean(value.get("unit")).lower()
+    interval = _coerce_int(
+        value.get("interval") or value.get("every") or value.get("every_n"),
+        default=1,
+        min_value=1,
+    )
+    if frequency in {"none", "null", "once", "one_off"}:
+        return recurrence
+    if frequency in {"every_other_day", "alternate_days", "day_after_day"}:
+        frequency = "daily"
+        interval = max(interval, 2)
+    elif frequency in {"biweekly", "every_two_weeks"}:
+        frequency = "weekly"
+        interval = max(interval, 2)
+    elif frequency in {"day", "days", "daily"} or unit in {"day", "days"}:
+        frequency = "daily"
+    elif frequency in {"week", "weeks", "weekly"} or unit in {"week", "weeks"}:
+        frequency = "weekly"
+    elif frequency in {"month", "months", "monthly"} or unit in {"month", "months"}:
+        frequency = "monthly"
+    elif frequency in {"year", "years", "yearly", "annual", "annually"} or unit in {"year", "years"}:
+        frequency = "yearly"
+    if frequency not in {"daily", "weekly", "monthly", "yearly"}:
+        return recurrence
+    return {
+        **recurrence,
+        "frequency": frequency,
+        "interval": interval,
+        "weekdays": [
+            code
+            for item in _as_list(value.get("weekdays") or value.get("days_of_week") or value.get("weekday"))
+            if (code := _weekday_code(item))
+        ],
+        "month_days": _as_int_list(value.get("month_days") or value.get("days_of_month") or value.get("month_day"), min_value=1, max_value=31),
+        "months": _as_int_list(value.get("months") or value.get("month"), min_value=1, max_value=12),
+        "until": value.get("until"),
+        "count": _coerce_optional_int(value.get("count")),
+        "rrule": str(value.get("rrule") or ""),
+    }
+
+
+def _compact_offsets(compact: dict[str, Any]) -> list[dict[str, Any]]:
+    offsets = compact.get("notification_offsets") or compact.get("offsets") or []
+    if not offsets:
+        minutes = _coerce_optional_int(
+            compact.get("reminder_offset_minutes")
+            or compact.get("minutes_before")
+            or compact.get("offset_minutes")
+            or compact.get("notify_minutes_before")
+        )
+        return [{"minutes_before": minutes, "source": "explicit"}] if minutes is not None else []
+    if not isinstance(offsets, list):
+        return []
+    normalized = []
+    for raw in offsets:
+        if isinstance(raw, int):
+            normalized.append({"minutes_before": max(0, raw), "source": "explicit"})
+            continue
+        if not isinstance(raw, dict):
+            continue
+        minutes = _coerce_optional_int(raw.get("minutes_before") or raw.get("minutes") or raw.get("offset_minutes"))
+        if minutes is None:
+            continue
+        normalized.append(
+            {
+                "minutes_before": minutes,
+                "source": _offset_source(raw.get("source")),
+            }
+        )
+    return normalized
+
+
+def _parse_iso_date(value: str):
+    try:
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        return None
+
+
+def _weekday_code(value: Any) -> str:
+    text = _clean(value).lower()
+    if not text:
+        return ""
+    upper = text.upper()
+    if upper in {"MO", "TU", "WE", "TH", "FR", "SA", "SU"}:
+        return upper
+    mapping = {
+        "monday": "MO",
+        "mon": "MO",
+        "понедельник": "MO",
+        "tuesday": "TU",
+        "tue": "TU",
+        "вторник": "TU",
+        "wednesday": "WE",
+        "wed": "WE",
+        "среда": "WE",
+        "среду": "WE",
+        "thursday": "TH",
+        "thu": "TH",
+        "четверг": "TH",
+        "friday": "FR",
+        "fri": "FR",
+        "пятница": "FR",
+        "пятницу": "FR",
+        "saturday": "SA",
+        "sat": "SA",
+        "суббота": "SA",
+        "субботу": "SA",
+        "sunday": "SU",
+        "sun": "SU",
+        "воскресенье": "SU",
+    }
+    return mapping.get(text, "")
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _as_int_list(value: Any, *, min_value: int | None = None, max_value: int | None = None) -> list[int]:
+    numbers = []
+    for item in _as_list(value):
+        parsed = _coerce_optional_int(item)
+        if parsed is None:
+            continue
+        if min_value is not None and parsed < min_value:
+            continue
+        if max_value is not None and parsed > max_value:
+            continue
+        numbers.append(parsed)
+    return numbers
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: Any, *, default: int, min_value: int) -> int:
+    parsed = _coerce_optional_int(value)
+    if parsed is None:
+        return default
+    return max(min_value, parsed)
+
+
+def _coerce_float(value: Any, *, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return min(1.0, max(0.0, parsed))
+
+
+def _priority(value: Any) -> str:
+    priority = _clean(value).lower()
+    return priority if priority in {"low", "normal", "high"} else "normal"
+
+
+def _offset_source(value: Any) -> str:
+    source = _clean(value).lower()
+    return source if source in {"explicit", "default_suggested"} else "explicit"
 
 
 def _extract_time(low: str) -> str | None:
@@ -441,3 +736,7 @@ def _remove_patterns(text: str, patterns: list[str]) -> str:
 
 def _birthday_title(text: str) -> str:
     return _title(text)
+
+
+def _clean(value: Any) -> str:
+    return str(value or "").strip()

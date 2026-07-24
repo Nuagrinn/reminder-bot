@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-PROMPT_VERSION = "reminder-parser-v1"
+PROMPT_VERSION = "reminder-parser-v2"
 
 REMINDER_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -123,4 +123,3 @@ REMINDER_JSON_SCHEMA: dict[str, Any] = {
         },
     },
 }
-

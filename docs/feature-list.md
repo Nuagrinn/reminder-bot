@@ -4,11 +4,13 @@ Date: 2026-07-24
 
 ## P0 - Current Focus
 
-1. Real parser quality
-   - Switch production flow from `PARSER_PROVIDER=fake` to Claude CLI.
-   - Improve prompt/schema examples for exact dates, exact times, relative dates
-     and recurring reminders.
-   - Add parser tests from real phrases sent in Telegram.
+1. Real parser quality - initial Claude path done
+   - Local `.env` can run `PARSER_PROVIDER=claude_cli`.
+   - Prompt/schema version is `reminder-parser-v2`.
+   - Exact date/time parsing is verified through Claude CLI.
+   - Recurring interval parsing is verified through Claude CLI.
+   - Compact Claude output is normalized into the internal reminder schema.
+   - Remaining work: collect parser tests from real phrases sent in Telegram.
 
 2. Recurring reminders with intervals - done in MVP parser
    - Support phrases like `день через день надо делать замер веса`.
@@ -28,9 +30,8 @@ Date: 2026-07-24
 
 ## Recommended Next Order
 
-1. Switch real parsing to Claude CLI and collect real Telegram phrases.
-   The confirmation screen is already in place, so testing Claude output is much
-   safer now.
+1. Run the bot in Telegram with Claude enabled and collect real phrases that
+   parse poorly.
 2. Add clarification buttons for missing date/time.
 3. Add edit controls on the confirmation screen.
 

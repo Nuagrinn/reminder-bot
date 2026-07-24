@@ -22,7 +22,9 @@ Telegram text/voice
 - Text intake through `ReminderIntakeService`.
 - Voice intake through `assistant_toolkit.speech`.
 - Fake parser for local no-LLM development.
-- Claude CLI parser scaffold through `assistant_toolkit.llm.StructuredClaudeRunner`.
+- Claude CLI parser through `assistant_toolkit.llm.StructuredClaudeRunner`.
+- Claude prompt/schema version `reminder-parser-v2`.
+- Compact Claude JSON normalization before persistence.
 - One-off events.
 - Basic recurring events:
   - daily with interval;
@@ -85,14 +87,15 @@ dates. `notification_rules` store relative reminder offsets. `notification_jobs`
 store concrete Telegram sends.
 
 Claude/fake parser never writes to SQLite directly. It returns a JSON payload;
-Python validates enough shape for MVP, applies defaults and persists events.
+Python normalizes the shape, applies defaults and persists events.
 
 ## Assistant Toolkit usage
 
 The bot depends on `assistant-toolkit` for infrastructure:
 
 - `assistant_toolkit.speech` for STT providers;
-- `assistant_toolkit.llm` for safe Claude CLI JSON calls;
+- `assistant_toolkit.llm` for Claude CLI JSON calls with budget limits,
+  UTF-8 handling and structured-output extraction;
 - `assistant_toolkit.db` for SQLite migration/session helper;
 - `assistant_toolkit.config` for `.env` parsing helpers;
 - `assistant_toolkit.telegram` for HTML formatting helpers.

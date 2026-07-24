@@ -37,3 +37,20 @@ class LoadSettingsTest(TestCase):
         self.assertTrue(settings.daily_agenda_enabled)
         self.assertEqual(settings.daily_agenda_hhmm, (7, 30))
         self.assertEqual(settings.daily_agenda_limit, 25)
+
+    def test_claude_budget_settings(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_OWNER_ID": "12345",
+                "CLAUDE_MODEL": "",
+                "CLAUDE_MAX_BUDGET_USD": "0.07",
+                "CLAUDE_SYSTEM_PROMPT_MODE": "replace",
+            },
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.claude_model, "claude-haiku-4-5-20251001")
+        self.assertEqual(settings.claude_max_budget_usd, 0.07)
+        self.assertEqual(settings.claude_system_prompt_mode, "replace")

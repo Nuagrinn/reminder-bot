@@ -3,8 +3,8 @@
 Личный Telegram-бот-напоминалка: принимает текст или голос, понимает событие и
 дату, сохраняет напоминание в SQLite и присылает его в нужный момент.
 
-Статус: MVP skeleton. Уже есть SQLite-модель, fake/Claude parser layer,
-одноразовые и базовые recurring events, Telegram adapter и тесты.
+Статус: MVP. Уже есть SQLite-модель, fake/Claude parser layer,
+одноразовые и recurring events, Telegram adapter, локальный voice STT и тесты.
 
 ## Быстрый старт локально
 
@@ -163,7 +163,21 @@ Telegram
 вторник`, `каждые два дня`, `день через день`, `12 августа день рождения ...`.
 
 `PARSER_PROVIDER=claude_cli` вызывает Claude Code через `assistant_toolkit.llm`
-и ожидает строгий JSON.
+и просит строгий JSON по схеме `reminder-parser-v2`. На практике Claude иногда
+возвращает компактный JSON (`datetime`, `date`, `time`, `recurrence`), поэтому
+бот нормализует такой ответ в полный внутренний формат перед сохранением.
+
+Минимальный набор для Claude:
+
+```env
+PARSER_PROVIDER=claude_cli
+CLAUDE_BIN=claude
+CLAUDE_CODE_OAUTH_TOKEN=...
+CLAUDE_MODEL=claude-haiku-4-5-20251001
+CLAUDE_MAX_BUDGET_USD=0.12
+CLAUDE_SYSTEM_PROMPT_MODE=replace
+ALLOW_PAID_API=false
+```
 
 ## Документация
 

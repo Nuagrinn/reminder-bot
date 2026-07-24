@@ -17,7 +17,8 @@ def build_reminder_parser_agent(settings: Settings) -> ReminderParserAgent:
             oauth_token=settings.claude_code_oauth_token,
             model=settings.claude_model,
             timeout_seconds=settings.claude_timeout_seconds,
+            max_budget_usd=settings.claude_max_budget_usd,
+            system_prompt_mode=settings.claude_system_prompt_mode,
             allow_paid_api=settings.allow_paid_api,
         )
     raise RuntimeError(f"Unsupported PARSER_PROVIDER: {settings.parser_provider}")
-

@@ -35,6 +35,8 @@ class Settings:
     claude_code_oauth_token: str
     claude_model: str
     claude_timeout_seconds: int
+    claude_max_budget_usd: float
+    claude_system_prompt_mode: str
     allow_paid_api: bool
     stt_provider: str
     voice_dir: Path
@@ -93,8 +95,10 @@ def load_settings() -> Settings:
         parser_provider=get("PARSER_PROVIDER", "fake").strip().lower() or "fake",
         claude_bin=get("CLAUDE_BIN", "claude").strip() or "claude",
         claude_code_oauth_token=get("CLAUDE_CODE_OAUTH_TOKEN").strip(),
-        claude_model=get("CLAUDE_MODEL").strip(),
+        claude_model=get("CLAUDE_MODEL").strip() or "claude-haiku-4-5-20251001",
         claude_timeout_seconds=parse_int(get("CLAUDE_TIMEOUT_SECONDS", "120"), default=120, min_value=30),
+        claude_max_budget_usd=_parse_float(get("CLAUDE_MAX_BUDGET_USD", "0.12"), default=0.12, min_value=0),
+        claude_system_prompt_mode=get("CLAUDE_SYSTEM_PROMPT_MODE", "replace").strip().lower() or "replace",
         allow_paid_api=parse_bool(get("ALLOW_PAID_API", "false")),
         stt_provider=get("STT_PROVIDER", "disabled").strip().lower() or "disabled",
         voice_dir=resolve_path(get("VOICE_DIR"), default=PROJECT_ROOT / "data" / "voice", base_dir=PROJECT_ROOT),
@@ -113,3 +117,10 @@ def load_settings() -> Settings:
         ),
         ffmpeg_bin=get("FFMPEG_BIN", "ffmpeg").strip() or "ffmpeg",
     )
+
+
+def _parse_float(value: str, *, default: float, min_value: float) -> float:
+    try:
+        return max(min_value, float(value))
+    except (TypeError, ValueError):
+        return default

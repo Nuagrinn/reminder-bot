@@ -65,9 +65,15 @@ def _recurring_dates(
             for item in recurrence.get("weekdays", [])
             if item in WEEKDAY_INDEX
         ] or [(start_date or from_date).weekday()]
+        anchor = start_date or from_date
         cursor = from_date
         while cursor <= until_date:
-            if cursor.weekday() in weekdays and (not start_date or cursor >= start_date):
+            week_index = max(0, (cursor - anchor).days // 7)
+            if (
+                cursor.weekday() in weekdays
+                and week_index % interval == 0
+                and (not start_date or cursor >= start_date)
+            ):
                 yield cursor
             cursor += timedelta(days=1)
         return
@@ -151,4 +157,3 @@ def _next_month(year: int, month: int) -> tuple[int, int]:
     if month == 12:
         return year + 1, 1
     return year, month + 1
-

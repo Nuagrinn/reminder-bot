@@ -57,7 +57,7 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
     lines = ["<b>Запланировал</b>", ""]
     for occurrence in occurrences[:10]:
         lines.append(f"• <b>{h(occurrence.title)}</b>")
-        lines.append(f"  Событие: <code>{_date_time_label(occurrence.occurs_at)}</code>")
+        lines.append(f"  Событие: <code>{_occurrence_when_label(occurrence)}</code>")
         if occurrence.next_notify_at:
             lines.append(f"  Напомню: <code>{_date_time_label(occurrence.next_notify_at)}</code>")
         lines.append("")
@@ -74,7 +74,7 @@ def format_occurrence_list(items: list[OccurrenceView], *, title: str, empty_tex
         if day != current_date:
             current_date = day
             lines.append(f"<b>{day}</b>")
-        time_label = item.occurs_at.strftime("%H:%M")
+        time_label = _occurrence_time_label(item)
         lines.append(f"<b>{index}.</b> <code>{time_label}</code> · {h(item.title)}")
     return "\n".join(lines)
 
@@ -84,7 +84,7 @@ def format_occurrence_detail(item: OccurrenceView) -> str:
         "<b>Напоминание</b>",
         "",
         f"<b>{h(item.title)}</b>",
-        f"Когда: <code>{_date_time_label(item.occurs_at)}</code>",
+        f"Когда: <code>{_occurrence_when_label(item)}</code>",
     ]
     if item.next_notify_at:
         lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
@@ -105,7 +105,7 @@ def format_due_notification(job: NotificationJobView) -> str:
     return (
         "<b>Напоминание</b>\n\n"
         f"<b>{h(job.title)}</b>\n"
-        f"План: <code>{_date_time_label(job.occurs_at)}</code>"
+        f"План: <code>{_job_when_label(job)}</code>"
     )
 
 
@@ -156,6 +156,26 @@ def format_snoozed(minutes: int) -> str:
 
 def _date_time_label(value: datetime) -> str:
     return value.strftime("%d.%m.%Y %H:%M")
+
+
+def _date_label_from_datetime(value: datetime) -> str:
+    return value.strftime("%d.%m.%Y")
+
+
+def _occurrence_when_label(item: OccurrenceView) -> str:
+    if item.all_day:
+        return _date_label_from_datetime(item.occurs_at)
+    return _date_time_label(item.occurs_at)
+
+
+def _job_when_label(job: NotificationJobView) -> str:
+    if job.all_day:
+        return _date_label_from_datetime(job.occurs_at)
+    return _date_time_label(job.occurs_at)
+
+
+def _occurrence_time_label(item: OccurrenceView) -> str:
+    return "день" if item.all_day else item.occurs_at.strftime("%H:%M")
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:

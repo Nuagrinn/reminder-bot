@@ -315,6 +315,16 @@ Date: 2026-07-24
   - persisted notification jobs at backoff times;
   - hiding internal assumptions from confirmation;
   - detail-card cancel button.
+- Checked a real `/today` list where an all-day task was displayed as `09:00`.
+- Root cause: all-day tasks are internally materialized at the default day
+  anchor time so SQLite occurrences have a concrete datetime.
+- Added `all_day` to occurrence and notification view models.
+- Telegram lists, detail cards, inline list buttons and due notifications now
+  hide that internal anchor:
+  - lists/buttons show `день`;
+  - detail/due cards show the date without `09:00`.
+- CLI `today` / `upcoming` also use a date-only `day` label for all-day
+  occurrences.
 
 ## Notes
 

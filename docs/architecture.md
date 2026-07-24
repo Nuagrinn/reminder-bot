@@ -128,6 +128,11 @@ row opens an occurrence detail card with:
 
 The delete action reuses the scoped deletion model for recurring reminders.
 
+All-day tasks may be internally materialized at the default day anchor time
+(`09:00`) so recurrence and notification jobs have a concrete datetime. Telegram
+lists, detail cards and due notifications hide that internal anchor and display
+`день` or just the date instead.
+
 ## Clarification Flow
 
 When parser status is `needs_clarification`, Telegram keeps the same short-lived

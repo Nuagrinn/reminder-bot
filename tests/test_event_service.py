@@ -53,6 +53,7 @@ class EventServiceTests(unittest.TestCase):
 
         self.assertEqual(event.title, "Пополнить карту наличкой")
         self.assertEqual(len(upcoming), 1)
+        self.assertTrue(upcoming[0].all_day)
         self.assertEqual(upcoming[0].occurs_at, datetime(2026, 7, 25, 9, 0))
         self.assertEqual(upcoming[0].next_notify_at, datetime(2026, 7, 24, 20, 0))
         self.assertEqual(due_day_before[0].notify_at, datetime(2026, 7, 24, 20, 0))
@@ -90,6 +91,7 @@ class EventServiceTests(unittest.TestCase):
         due_second = self.service.due_jobs(now=datetime(2026, 7, 24, 19, 42), limit=10)
 
         self.assertEqual(due_first[0].notify_at, datetime(2026, 7, 24, 17, 42))
+        self.assertTrue(due_first[0].all_day)
         self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 19, 42))
 
     def test_snooze_creates_new_pending_job(self) -> None:

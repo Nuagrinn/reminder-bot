@@ -59,7 +59,7 @@ def cmd_today(args) -> None:
     start_at = datetime.combine(now.date(), datetime.min.time())
     end_at = start_at + timedelta(days=1)
     for item in services.events.list_occurrences(start_at=start_at, end_at=end_at, limit=args.limit):
-        print(f"{item.occurs_at:%Y-%m-%d %H:%M}\t{item.title}\t{item.event_id}")
+        print(f"{_occurrence_cli_when(item)}\t{item.title}\t{item.event_id}")
 
 
 def cmd_upcoming(args) -> None:
@@ -69,7 +69,7 @@ def cmd_upcoming(args) -> None:
     services.events.materialize_all(now=now)
     for item in services.events.upcoming(now=now, limit=args.limit):
         notify = item.next_notify_at.strftime("%Y-%m-%d %H:%M") if item.next_notify_at else "-"
-        print(f"{item.occurs_at:%Y-%m-%d %H:%M}\t{notify}\t{item.title}\t{item.event_id}")
+        print(f"{_occurrence_cli_when(item)}\t{notify}\t{item.title}\t{item.event_id}")
 
 
 def cmd_due(args) -> None:
@@ -78,6 +78,12 @@ def cmd_due(args) -> None:
     now = local_now(settings.timezone)
     for item in services.events.due_jobs(now=now, limit=args.limit):
         print(f"{item.notify_at:%Y-%m-%d %H:%M}\t{item.title}\t{item.job_id}")
+
+
+def _occurrence_cli_when(item) -> str:
+    if item.all_day:
+        return f"{item.occurs_at:%Y-%m-%d} day"
+    return f"{item.occurs_at:%Y-%m-%d %H:%M}"
 
 
 def _tool_exists(value: str) -> bool:

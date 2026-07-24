@@ -108,7 +108,8 @@ def _occurrence_button_label(index: int, item: OccurrenceView) -> str:
     title = item.title
     if len(title) > 34:
         title = f"{title[:31]}..."
-    return f"{index}. {item.occurs_at:%H:%M} · {title}"
+    time_label = "день" if item.all_day else item.occurs_at.strftime("%H:%M")
+    return f"{index}. {time_label} · {title}"
 
 
 def _clarification_button_label(option: str) -> str:

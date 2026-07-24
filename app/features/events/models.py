@@ -50,6 +50,7 @@ class OccurrenceView:
     occurrence_status: str
     event_status: str
     next_notify_at: datetime | None
+    all_day: bool = False
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class NotificationJobView:
     occurs_at: datetime
     notify_at: datetime
     job_status: str
+    all_day: bool = False
 
 
 def event_from_row(row: Row) -> Event:
@@ -112,6 +114,7 @@ def occurrence_view_from_row(row: Row) -> OccurrenceView:
         occurrence_status=row["occurrence_status"],
         event_status=row["event_status"],
         next_notify_at=datetime.fromisoformat(next_notify) if next_notify else None,
+        all_day=_row_bool(row, "all_day"),
     )
 
 
@@ -127,5 +130,11 @@ def notification_job_view_from_row(row: Row) -> NotificationJobView:
         occurs_at=datetime.fromisoformat(row["occurs_at"]),
         notify_at=datetime.fromisoformat(row["notify_at"]),
         job_status=row["job_status"],
+        all_day=_row_bool(row, "all_day"),
     )
 
+
+def _row_bool(row: Row, key: str) -> bool:
+    if key not in row.keys():
+        return False
+    return bool(row[key])

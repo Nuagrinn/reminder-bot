@@ -6,7 +6,9 @@ from unittest import TestCase
 from app.adapters.telegram.formatters import (
     format_action_cancelled,
     format_daily_agenda,
+    format_due_notification,
     format_occurrence_detail,
+    format_occurrence_list,
     format_parse_confirmation,
 )
 from app.adapters.telegram.keyboards import (
@@ -127,6 +129,16 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{OCCURRENCE_DETAIL_PREFIX}occ_1")
         self.assertIn("1.", keyboard.inline_keyboard[0][0].text)
 
+    def test_all_day_occurrence_list_hides_internal_nine_am_anchor(self) -> None:
+        item = all_day_occurrence()
+
+        text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
+        keyboard = occurrence_list_keyboard([item])
+
+        self.assertIn("<code>день</code>", text)
+        self.assertNotIn("09:00", text)
+        self.assertIn("1. день", keyboard.inline_keyboard[0][0].text)
+
     def test_occurrence_detail_keyboard_has_done_and_delete(self) -> None:
         keyboard = occurrence_detail_keyboard("occ_1")
 
@@ -143,6 +155,32 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("Напоминание", text)
         self.assertIn("Проверять почту", text)
         self.assertIn("25.07.2026 09:00", text)
+
+    def test_all_day_occurrence_detail_hides_internal_time(self) -> None:
+        text = format_occurrence_detail(all_day_occurrence())
+
+        self.assertIn("24.07.2026", text)
+        self.assertNotIn("09:00", text)
+
+    def test_all_day_due_notification_hides_internal_time(self) -> None:
+        text = format_due_notification(
+            NotificationJobView(
+                job_id="job_1",
+                event_id="evt_1",
+                occurrence_id="occ_1",
+                notification_rule_id="rule_1",
+                title="Закинуть наличку на карту",
+                description="",
+                event_type="task",
+                occurs_at=datetime(2026, 7, 24, 9, 0),
+                notify_at=datetime(2026, 7, 24, 18, 19),
+                job_status="pending",
+                all_day=True,
+            )
+        )
+
+        self.assertIn("24.07.2026", text)
+        self.assertNotIn("09:00", text)
 
     def test_daily_agenda_uses_today_list(self) -> None:
         item = occurrence()
@@ -165,4 +203,20 @@ def occurrence() -> OccurrenceView:
         occurrence_status="scheduled",
         event_status="active",
         next_notify_at=datetime(2026, 7, 25, 9, 0),
+    )
+
+
+def all_day_occurrence() -> OccurrenceView:
+    return OccurrenceView(
+        occurrence_id="occ_2",
+        event_id="evt_2",
+        title="Закинуть наличку на карту",
+        description="",
+        event_type="task",
+        occurs_at=datetime(2026, 7, 24, 9, 0),
+        occurrence_date="2026-07-24",
+        occurrence_status="scheduled",
+        event_status="active",
+        next_notify_at=datetime(2026, 7, 24, 18, 19),
+        all_day=True,
     )

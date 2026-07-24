@@ -255,6 +255,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
+                    e.all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
                 FROM event_occurrences eo
@@ -285,6 +286,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
+                    e.all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
                 FROM event_occurrences eo
@@ -317,7 +319,8 @@ class EventService:
                     eo.occurs_at,
                     e.title,
                     e.description,
-                    e.event_type
+                    e.event_type,
+                    e.all_day
                 FROM notification_jobs nj
                 JOIN event_occurrences eo ON eo.id = nj.occurrence_id
                 JOIN events e ON e.id = nj.event_id

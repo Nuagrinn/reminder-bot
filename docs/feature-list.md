@@ -57,6 +57,8 @@ Date: 2026-07-24
    - Daily agenda also renders action buttons when there are items.
    - Detail card supports `Готово`, `Удалить` and neutral `Отмена`.
    - Delete from detail reuses recurring scope menu.
+   - All-day tasks are shown as `день` / date-only instead of the internal
+     `09:00` materialization anchor.
 
 7. Clarification diagnostics - done
    - `needs_clarification` parse results are logged at INFO level.

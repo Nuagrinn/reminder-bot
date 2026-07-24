@@ -361,13 +361,21 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
         return _clarification(raw_text, "Когда напомнить?", ["сегодня", "завтра", "через час"])
 
     title = _title(_clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text)
+    date_only_midnight = _date_only_midnight(raw_text=raw_text, event_time=event_time, start_at=start_at)
+    if date_only_midnight:
+        start_at = ""
+        event_time = ""
     all_day = not bool(event_time or start_at)
-    raw_temporal_profile = _clean(
-        compact.get("temporal_profile")
-        or compact.get("profile")
-        or compact.get("schedule_profile")
-        or compact.get("temporal_type")
-    ).lower()
+    raw_temporal_profile = (
+        "day_task"
+        if date_only_midnight
+        else _clean(
+            compact.get("temporal_profile")
+            or compact.get("profile")
+            or compact.get("schedule_profile")
+            or compact.get("temporal_type")
+        ).lower()
+    )
     item = {
         "client_ref": "item_1",
         "title": title,
@@ -606,6 +614,22 @@ def _looks_like_moment_reminder(raw_text: str) -> bool:
     if re.search(r"\bчерез\s+(\d+|один|одну|пару)\s+", low):
         return True
     return bool(re.search(r"^\s*напомн\w+\s+(?:мне\s+)?(?:сегодня|завтра|послезавтра|в\s+\d)", low))
+
+
+def _date_only_midnight(*, raw_text: str, event_time: str, start_at: str) -> bool:
+    if event_time != "00:00":
+        return False
+    if _extract_time(raw_text.lower()):
+        return False
+    if "полноч" in raw_text.lower():
+        return False
+    if start_at:
+        try:
+            parsed = datetime.fromisoformat(start_at)
+        except ValueError:
+            return False
+        return parsed.hour == 0 and parsed.minute == 0
+    return True
 
 
 def _extract_time(low: str) -> str | None:

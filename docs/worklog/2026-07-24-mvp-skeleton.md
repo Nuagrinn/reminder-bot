@@ -283,6 +283,31 @@ Date: 2026-07-24
   Telegram callback option resolution.
 - Added regression tests for compact and native Claude clarification payloads.
 
+## Confirmation And Same-Day Reminder UX
+
+- Checked a real Telegram confirmation for a voice-created reminder:
+  `Закинуть наличку на карту`.
+- Removed user-facing confirmation line `Заметка: Claude compact output
+  normalized by reminder-bot.` because it is internal parser/debug context, not
+  useful reminder content.
+- Changed same-day `day_task` policy:
+  - before the morning reminder time, keep morning/evening checks;
+  - after the morning reminder time, use same-day rolling backoff slots from
+    the creation moment.
+- Added normalization for Claude compact payloads where a date-only phrase like
+  `сегодня` is returned as midnight `00:00`; if the user did not say an exact
+  time, this is treated as all-day `day_task`, not `exact_time`.
+- Current same-day backoff defaults:
+  - `через 1 ч.`;
+  - `через 3 ч.`.
+- Added neutral `Отмена` to occurrence detail cards so opening an item from
+  `/today` or another list does not force `Готово` / `Удалить`.
+- Added regression tests for:
+  - same-day backoff labels;
+  - persisted notification jobs at backoff times;
+  - hiding internal assumptions from confirmation;
+  - detail-card cancel button.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

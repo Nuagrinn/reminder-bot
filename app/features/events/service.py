@@ -39,6 +39,7 @@ class EventDefaults:
     birthday_offsets_minutes: tuple[int, ...] = (1440, 0)
     deadline_days_before: tuple[int, ...] = (3, 1)
     annual_days_before: tuple[int, ...] = (7, 1)
+    same_day_backoff_offsets_minutes: tuple[int, ...] = (60, 180)
     materialize_days: int = 180
 
 

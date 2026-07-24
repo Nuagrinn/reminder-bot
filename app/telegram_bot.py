@@ -23,6 +23,7 @@ from assistant_toolkit.speech import SpeechToTextError
 from assistant_toolkit.telegram import split_message
 
 from app.adapters.telegram.formatters import (
+    format_action_cancelled,
     format_done,
     format_daily_agenda,
     format_delete_cancelled,
@@ -45,6 +46,7 @@ from app.adapters.telegram.keyboards import (
     CLARIFY_PREFIX,
     CONFIRM_REMINDER_PREFIX,
     DELETE_CANCEL_PREFIX,
+    DETAIL_CANCEL_PREFIX,
     DELETE_MENU_PREFIX,
     DELETE_OCCURRENCE_PREFIX,
     DELETE_SERIES_FROM_PREFIX,
@@ -474,6 +476,14 @@ async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAU
     )
 
 
+async def detail_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    await query.answer("Отмена")
+    await query.edit_message_text(format_action_cancelled())
+
+
 async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -705,6 +715,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(clarify_callback, pattern=f"^{CLARIFY_PREFIX}"))
     app.add_handler(CallbackQueryHandler(clarify_cancel_callback, pattern=f"^{CLARIFY_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(detail_cancel_callback, pattern=f"^{DETAIL_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(delete_menu_callback, pattern=f"^{DELETE_MENU_PREFIX}"))

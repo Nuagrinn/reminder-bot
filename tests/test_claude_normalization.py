@@ -118,3 +118,21 @@ class ClaudeNormalizationTest(TestCase):
         item = payload["items"][0]
 
         self.assertEqual(item["temporal_profile"], "moment_reminder")
+
+    def test_compact_midnight_without_explicit_time_becomes_day_task(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "закинуть наличку на карту",
+                "datetime": "2026-07-24T00:00:00",
+                "date": "2026-07-24",
+                "time": "00:00",
+                "temporal_profile": "exact_time",
+            },
+            request("закинуть наличку на карту сегодня"),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "day_task")
+        self.assertTrue(item["schedule"]["all_day"])
+        self.assertIsNone(item["schedule"]["start_at"])
+        self.assertIsNone(item["schedule"]["time"])

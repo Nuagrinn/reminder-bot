@@ -18,6 +18,7 @@ CONFIRM_REMINDER_PREFIX = "confirm_reminder:"
 DISCARD_REMINDER_PREFIX = "discard_reminder:"
 CLARIFY_PREFIX = "clarify:"
 CLARIFY_CANCEL_PREFIX = "clarify_cancel:"
+DETAIL_CANCEL_PREFIX = "detail_cancel:"
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -87,6 +88,7 @@ def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Отмена", callback_data=f"{DETAIL_CANCEL_PREFIX}{occurrence_id}")],
         ]
     )
 

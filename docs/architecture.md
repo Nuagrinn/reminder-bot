@@ -106,7 +106,9 @@ category:
 
 - `moment_reminder`: remind at the target moment itself.
 - `exact_time`: concrete date/time, with short pre-event reminders.
-- `day_task`: date without exact time, with morning and evening checks.
+- `day_task`: date without exact time, with morning and evening checks. If the
+  task is created for today after the morning check is already past, reminders
+  use rolling same-day backoff slots, currently +1 hour and +3 hours.
 - `deadline`: due-by phrasing, with earlier warnings.
 - `time_window`: start/end window, using the window start for reminders.
 - `recurring_exact_time`: recurring item with exact time.
@@ -121,7 +123,8 @@ Occurrence lists render numbered rows and matching inline buttons. Selecting a
 row opens an occurrence detail card with:
 
 - `Готово`;
-- `Удалить`.
+- `Удалить`;
+- `Отмена`.
 
 The delete action reuses the scoped deletion model for recurring reminders.
 

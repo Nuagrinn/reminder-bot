@@ -34,12 +34,15 @@ class EventServiceTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _create(self, text: str):
+        return self._create_at(text, now=self.now)
+
+    def _create_at(self, text: str, *, now: datetime):
         payload = FakeReminderParserAgent().parse(request(text)).payload
         return self.service.create_from_agent_item(
             payload["items"][0],
             source_text=text,
             source_kind="text",
-            now=self.now,
+            now=now,
         )
 
     def test_creates_one_off_all_day_event_and_default_job(self) -> None:
@@ -79,6 +82,15 @@ class EventServiceTests(unittest.TestCase):
 
         self.assertEqual(due_first[0].notify_at, datetime(2026, 7, 24, 14, 30))
         self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 15, 15))
+
+    def test_today_day_task_after_morning_gets_future_backoff_jobs(self) -> None:
+        now = datetime(2026, 7, 24, 16, 42)
+        self._create_at("надо сегодня пополнить карту наличкой", now=now)
+        due_first = self.service.due_jobs(now=datetime(2026, 7, 24, 17, 42), limit=10)
+        due_second = self.service.due_jobs(now=datetime(2026, 7, 24, 19, 42), limit=10)
+
+        self.assertEqual(due_first[0].notify_at, datetime(2026, 7, 24, 17, 42))
+        self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 19, 42))
 
     def test_snooze_creates_new_pending_job(self) -> None:
         self._create("через 2 часа проверить духовку")

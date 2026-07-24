@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from unittest import TestCase
 
-from app.adapters.telegram.formatters import format_daily_agenda, format_occurrence_detail, format_parse_confirmation
+from app.adapters.telegram.formatters import (
+    format_action_cancelled,
+    format_daily_agenda,
+    format_occurrence_detail,
+    format_parse_confirmation,
+)
 from app.adapters.telegram.keyboards import (
     CLARIFY_CANCEL_PREFIX,
     CLARIFY_PREFIX,
@@ -11,6 +16,7 @@ from app.adapters.telegram.keyboards import (
     DELETE_MENU_PREFIX,
     DELETE_OCCURRENCE_PREFIX,
     DELETE_SERIES_FROM_PREFIX,
+    DETAIL_CANCEL_PREFIX,
     DONE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     SNOOZE_PREFIX,
@@ -44,6 +50,7 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("Пополнить карту наличкой", text)
         self.assertIn("25.07.2026", text)
         self.assertIn("вечером за день", text)
+        self.assertNotIn("Заметка:", text)
 
     def test_confirmation_text_contains_daily_interval(self) -> None:
         parse_result = FakeReminderParserAgent().parse(request("каждые два дня проверять почту"))
@@ -125,6 +132,10 @@ class TelegramFormattersTest(TestCase):
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{DONE_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{DETAIL_CANCEL_PREFIX}occ_1")
+
+    def test_action_cancel_text_is_neutral(self) -> None:
+        self.assertEqual(format_action_cancelled(), "Ок, ничего не меняю.")
 
     def test_occurrence_detail_text_contains_actions_context(self) -> None:
         text = format_occurrence_detail(occurrence())

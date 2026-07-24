@@ -28,6 +28,25 @@ class NotificationPolicyTest(TestCase):
 
         self.assertEqual(notification_rule_labels(rules), ["за 1 ч.", "за 15 мин."])
 
+    def test_today_day_task_before_morning_keeps_day_checks(self) -> None:
+        rules = build_notification_rules(
+            item_for("надо сегодня пополнить карту наличкой"),
+            now=datetime(2026, 7, 24, 8, 0),
+            defaults=self.defaults,
+        )
+
+        self.assertEqual(notification_rule_labels(rules), ["утром в день", "вечером в день"])
+
+    def test_today_day_task_after_morning_gets_backoff_checks(self) -> None:
+        rules = build_notification_rules(
+            item_for("надо сегодня пополнить карту наличкой"),
+            now=datetime(2026, 7, 24, 16, 42),
+            defaults=self.defaults,
+        )
+
+        self.assertEqual(notification_rule_labels(rules), ["через 1 ч.", "через 3 ч."])
+        self.assertEqual([rule.time_of_day for rule in rules], ["17:42", "19:42"])
+
     def test_relative_delay_is_a_moment_reminder(self) -> None:
         rules = build_notification_rules(item_for("через 2 часа проверить духовку"), now=self.now, defaults=self.defaults)
 

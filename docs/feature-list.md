@@ -25,6 +25,8 @@ Date: 2026-07-24
      - `annual_date`.
    - Explicit user offsets override defaults.
    - Confirmation preview shows the planned reminder pattern.
+   - Same-day `day_task` reminders created after the morning window use rolling
+     backoff slots, currently `через 1 ч.` and `через 3 ч.`.
 
 3. Recurring reminders with intervals - done in MVP parser
    - Support phrases like `день через день надо делать замер веса`.
@@ -53,7 +55,7 @@ Date: 2026-07-24
 6. List detail/actions - done
    - `/today`, `/week`, `/month`, `/upcoming` render numbered action buttons.
    - Daily agenda also renders action buttons when there are items.
-   - Detail card supports `Готово` and `Удалить`.
+   - Detail card supports `Готово`, `Удалить` and neutral `Отмена`.
    - Delete from detail reuses recurring scope menu.
 
 7. Clarification diagnostics - done

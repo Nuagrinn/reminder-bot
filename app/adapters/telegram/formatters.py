@@ -42,9 +42,6 @@ def format_parse_confirmation(parse_result: ReminderParseResult) -> str:
         if repeat:
             lines.append(f"Повтор: <code>{h(repeat)}</code>")
         lines.append(f"Напомню: <code>{h(_notification_label(item))}</code>")
-        if assumptions := item.get("assumptions"):
-            if isinstance(assumptions, list) and assumptions:
-                lines.append(f"Заметка: {h(str(assumptions[0]))}")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -138,6 +135,10 @@ def format_series_deleted() -> str:
 
 def format_delete_cancelled() -> str:
     return "Ок, не удаляю."
+
+
+def format_action_cancelled() -> str:
+    return "Ок, ничего не меняю."
 
 
 def format_done() -> str:

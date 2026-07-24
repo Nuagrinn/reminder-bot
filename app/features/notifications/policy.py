@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Protocol
 
 
@@ -27,6 +27,7 @@ class NotificationPolicyDefaults(Protocol):
     exact_time_future_offsets_minutes: tuple[int, ...]
     deadline_days_before: tuple[int, ...]
     annual_days_before: tuple[int, ...]
+    same_day_backoff_offsets_minutes: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -86,12 +87,13 @@ def build_notification_rules(
         return _dedupe(rules)
 
     if profile == "day_task":
+        if is_today:
+            return _dedupe(_today_day_task_rules(now=now, defaults=defaults))
         rules = [
             _time_of_day(days_before=0, hhmm=defaults.day_reminder_hhmm),
             _time_of_day(days_before=0, hhmm=defaults.evening_reminder_hhmm),
         ]
-        if not is_today:
-            rules.insert(0, _time_of_day(days_before=1, hhmm=defaults.day_before_reminder_hhmm))
+        rules.insert(0, _time_of_day(days_before=1, hhmm=defaults.day_before_reminder_hhmm))
         return _dedupe(rules)
 
     if profile == "deadline":
@@ -195,6 +197,9 @@ def _explicit_rules(item: dict[str, Any]) -> list[NotificationRuleSpec]:
 
 
 def _rule_label(spec: NotificationRuleSpec) -> str:
+    backoff_minutes = _same_day_backoff_minutes(spec)
+    if backoff_minutes is not None:
+        return _backoff_label(backoff_minutes)
     if spec.kind == "time_of_day":
         if spec.minutes_before == 0:
             if spec.time_of_day < "12:00":
@@ -205,13 +210,53 @@ def _rule_label(spec: NotificationRuleSpec) -> str:
                 return "утром за день"
             return "вечером за день"
         return f"за {spec.minutes_before} дн. в {spec.time_of_day}"
-    if spec.minutes_before == 0:
+    return _relative_label(spec.minutes_before)
+
+
+def _relative_label(minutes_before: int) -> str:
+    if minutes_before == 0:
         return "в момент события"
-    if spec.minutes_before % 1440 == 0:
-        return f"за {spec.minutes_before // 1440} дн."
-    if spec.minutes_before % 60 == 0:
-        return f"за {spec.minutes_before // 60} ч."
-    return f"за {spec.minutes_before} мин."
+    if minutes_before % 1440 == 0:
+        return f"за {minutes_before // 1440} дн."
+    if minutes_before % 60 == 0:
+        return f"за {minutes_before // 60} ч."
+    return f"за {minutes_before} мин."
+
+
+def _backoff_label(minutes: int) -> str:
+    if minutes % 60 == 0:
+        return f"через {minutes // 60} ч."
+    return f"через {minutes} мин."
+
+
+def _today_day_task_rules(
+    *,
+    now: datetime,
+    defaults: NotificationPolicyDefaults,
+) -> list[NotificationRuleSpec]:
+    now_minute = now.replace(second=0, microsecond=0)
+    morning_at = _today_at(now_minute, defaults.day_reminder_hhmm)
+    if now_minute < morning_at:
+        return [
+            _time_of_day(days_before=0, hhmm=defaults.day_reminder_hhmm),
+            _time_of_day(days_before=0, hhmm=defaults.evening_reminder_hhmm),
+        ]
+
+    rules: list[NotificationRuleSpec] = []
+    for raw_minutes in defaults.same_day_backoff_offsets_minutes:
+        minutes = max(1, int(raw_minutes))
+        target = now_minute + timedelta(minutes=minutes)
+        if target.date() != now_minute.date():
+            continue
+        rules.append(_time_of_day_at(target, source=f"same_day_backoff:{minutes}"))
+    if rules:
+        return rules
+
+    end_of_day = now_minute.replace(hour=23, minute=55)
+    if end_of_day <= now_minute:
+        return []
+    minutes = max(1, int((end_of_day - now_minute).total_seconds() // 60))
+    return [_time_of_day_at(end_of_day, source=f"same_day_backoff:{minutes}")]
 
 
 def _relative(minutes_before: int, *, source: str = "default") -> NotificationRuleSpec:
@@ -229,6 +274,30 @@ def _time_of_day(*, days_before: int, hhmm: tuple[int, int], source: str = "defa
         time_of_day=_hhmm(hhmm),
         source=source,
     )
+
+
+def _time_of_day_at(value: datetime, *, source: str) -> NotificationRuleSpec:
+    return NotificationRuleSpec(
+        kind="time_of_day",
+        minutes_before=0,
+        time_of_day=value.strftime("%H:%M"),
+        source=source,
+    )
+
+
+def _today_at(now: datetime, hhmm: tuple[int, int]) -> datetime:
+    hour, minute = hhmm
+    return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def _same_day_backoff_minutes(spec: NotificationRuleSpec) -> int | None:
+    prefix = "same_day_backoff:"
+    if not spec.source.startswith(prefix):
+        return None
+    try:
+        return max(1, int(spec.source.removeprefix(prefix)))
+    except ValueError:
+        return None
 
 
 def _deadline_offsets(defaults: NotificationPolicyDefaults) -> tuple[int, ...]:

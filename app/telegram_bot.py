@@ -127,6 +127,22 @@ async def _answer_long(update: Update, text: str, **kwargs) -> None:
         await update.callback_query.message.reply_text(text, **kwargs)
 
 
+async def _deliver_text(
+    update: Update,
+    text: str,
+    *,
+    edit_message: Message | None = None,
+    **kwargs,
+) -> bool:
+    chunks = split_message(text)
+    if edit_message and len(chunks) == 1:
+        if await _safe_edit_message(edit_message, chunks[0], **kwargs):
+            return True
+        log.info("Falling back to Telegram reply after edit failure")
+    await _answer_long(update, text, **kwargs)
+    return False
+
+
 async def _safe_reply_text(message: Message, text: str, **kwargs) -> Message | None:
     try:
         return await message.reply_text(text, **kwargs)
@@ -135,13 +151,15 @@ async def _safe_reply_text(message: Message, text: str, **kwargs) -> Message | N
         return None
 
 
-async def _safe_edit_message(message: Message | None, text: str, **kwargs) -> None:
+async def _safe_edit_message(message: Message | None, text: str, **kwargs) -> bool:
     if not message:
-        return
+        return False
     try:
         await message.edit_text(text, **kwargs)
+        return True
     except Exception:
         log.warning("Failed to edit Telegram status message", exc_info=True)
+        return False
 
 
 async def _safe_delete_message(message: Message | None) -> None:
@@ -285,12 +303,19 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     log.info("Voice transcribed elapsed=%.2fs transcript=%r", perf_counter() - started, _short_log_text(transcript))
     await _safe_edit_message(wait_message, f"Распознал: {_short_log_text(transcript, 700)}\n\nРазбираю...")
     try:
-        await _preview_from_text(update, context, transcript, source_kind="voice")
+        delivered_via_status = await _preview_from_text(
+            update,
+            context,
+            transcript,
+            source_kind="voice",
+            edit_message=wait_message,
+        )
     except Exception:
         log.exception("Voice preview failed after transcription")
         await _safe_edit_message(wait_message, "Распознал голосовое, но не смог отправить результат в Telegram.")
         return
-    await _safe_delete_message(wait_message)
+    if not delivered_via_status:
+        await _safe_delete_message(wait_message)
     log.info("Voice processed elapsed=%.2fs", perf_counter() - started)
 
 
@@ -314,7 +339,14 @@ def _safe_file_id(file_id: str) -> str:
     return f"{file_id[:6]}...{file_id[-4:]}"
 
 
-async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, *, source_kind: str) -> None:
+async def _preview_from_text(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    *,
+    source_kind: str,
+    edit_message: Message | None = None,
+) -> bool:
     services = _services(context)
     now = local_now(services.settings.timezone)
     _cleanup_pending(context, now=now)
@@ -323,8 +355,12 @@ async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         parse_result = await asyncio.to_thread(services.intake.parse, request)
     except Exception as exc:
         log.exception("Reminder intake failed")
-        await _answer_long(update, f"Не смог разобрать напоминание.\n\n{exc}", reply_markup=main_keyboard())
-        return
+        return await _deliver_text(
+            update,
+            f"Не смог разобрать напоминание.\n\n{exc}",
+            edit_message=edit_message,
+            reply_markup=main_keyboard(),
+        )
 
     pending_id = new_id("pending_")
     _pending_reminders(context)[pending_id] = PendingReminder(
@@ -333,9 +369,10 @@ async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         created_at=now,
     )
     keyboard = _pending_inline_keyboard(pending_id, parse_result)
-    await _answer_long(
+    return await _deliver_text(
         update,
         format_parse_confirmation(parse_result),
+        edit_message=edit_message,
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard or main_keyboard(),
     )

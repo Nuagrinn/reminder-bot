@@ -267,6 +267,14 @@ Date: 2026-07-24
   - if the final preview cannot be sent, the status message is edited with a
     short failure notice when possible.
 - Added INFO logs for voice receive/download/transcription/preview stages.
+- Checked another voice case where STT succeeded, but sending the final preview
+  as a new Telegram message timed out.
+- Voice preview delivery now prefers editing the existing status message into
+  the final confirmation/clarification card. If edit fails, it falls back to a
+  normal reply.
+- The temporary status message is deleted only when the final result was sent as
+  a separate reply; if it was edited into the final result, it stays as the
+  actionable message with inline buttons.
 
 ## Clarification Machine Codes
 

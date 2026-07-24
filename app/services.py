@@ -19,12 +19,17 @@ class AppServices:
             EventDefaults(
                 timezone=settings.timezone,
                 day_reminder_hhmm=settings.default_day_reminder_hhmm,
+                evening_reminder_hhmm=settings.default_evening_reminder_hhmm,
+                day_before_reminder_hhmm=settings.default_day_before_reminder_hhmm,
                 timed_event_offset_minutes=settings.default_timed_event_offset_minutes,
+                exact_time_today_offsets_minutes=tuple(settings.default_exact_time_today_offsets_minutes),
+                exact_time_future_offsets_minutes=tuple(settings.default_exact_time_future_offsets_minutes),
                 birthday_offsets_minutes=tuple(settings.default_birthday_offsets_minutes),
+                deadline_days_before=tuple(settings.default_deadline_days_before),
+                annual_days_before=tuple(settings.default_annual_days_before),
                 materialize_days=settings.materialize_days,
             ),
         )
         self.parser = build_reminder_parser_agent(settings)
         self.intake = ReminderIntakeService(self.db, self.parser, self.events)
         self.speech = build_speech_to_text(settings)
-

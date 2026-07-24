@@ -25,14 +25,30 @@ class FakeParserTests(unittest.TestCase):
 
         self.assertEqual(result.payload["status"], "ok")
         self.assertEqual(item["title"], "Пополнить карту наличкой")
+        self.assertEqual(item["temporal_profile"], "day_task")
         self.assertEqual(item["schedule"]["date"], "2026-07-25")
         self.assertTrue(item["schedule"]["all_day"])
+
+    def test_parses_relative_delay_as_moment_reminder(self) -> None:
+        result = FakeReminderParserAgent().parse(request("через 2 часа проверить духовку"))
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "moment_reminder")
+        self.assertEqual(item["schedule"]["start_at"], "2026-07-24T14:00:00")
+
+    def test_parses_today_timed_task_as_exact_time(self) -> None:
+        result = FakeReminderParserAgent().parse(request("сегодня в 15:30 оплатить счет"))
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "exact_time")
+        self.assertEqual(item["schedule"]["start_at"], "2026-07-24T15:30:00")
 
     def test_parses_weekly_task(self) -> None:
         result = FakeReminderParserAgent().parse(request("каждый вторник обновлять отчет по калориям"))
         item = result.payload["items"][0]
 
         self.assertEqual(item["event_type"], "habit")
+        self.assertEqual(item["temporal_profile"], "recurring_day_task")
         self.assertEqual(item["schedule"]["kind"], "recurring")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "weekly")
         self.assertEqual(item["schedule"]["recurrence"]["weekdays"], ["TU"])
@@ -43,6 +59,7 @@ class FakeParserTests(unittest.TestCase):
 
         self.assertEqual(item["title"], "Проверять почту")
         self.assertEqual(item["event_type"], "habit")
+        self.assertEqual(item["temporal_profile"], "recurring_day_task")
         self.assertEqual(item["schedule"]["kind"], "recurring")
         self.assertEqual(item["schedule"]["date"], "2026-07-25")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "daily")
@@ -53,6 +70,7 @@ class FakeParserTests(unittest.TestCase):
         item = result.payload["items"][0]
 
         self.assertEqual(item["title"], "Делать замер веса")
+        self.assertEqual(item["temporal_profile"], "recurring_day_task")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "daily")
         self.assertEqual(item["schedule"]["recurrence"]["interval"], 2)
 
@@ -61,6 +79,7 @@ class FakeParserTests(unittest.TestCase):
         item = result.payload["items"][0]
 
         self.assertEqual(item["event_type"], "birthday")
+        self.assertEqual(item["temporal_profile"], "annual_date")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "yearly")
         self.assertEqual(item["schedule"]["recurrence"]["months"], [8])
         self.assertEqual(item["schedule"]["recurrence"]["month_days"], [12])

@@ -24,8 +24,14 @@ class Settings:
     reminder_tick_seconds: int
     timezone: str
     default_day_reminder_time: str
+    default_evening_reminder_time: str
+    default_day_before_reminder_time: str
     default_timed_event_offset_minutes: int
+    default_exact_time_today_offsets_minutes: list[int]
+    default_exact_time_future_offsets_minutes: list[int]
     default_birthday_offsets_minutes: list[int]
+    default_deadline_days_before: list[int]
+    default_annual_days_before: list[int]
     materialize_days: int
     daily_agenda_enabled: bool
     daily_agenda_time: str
@@ -56,6 +62,14 @@ class Settings:
         return parse_hhmm(self.default_day_reminder_time, default=(9, 0))
 
     @property
+    def default_evening_reminder_hhmm(self) -> tuple[int, int]:
+        return parse_hhmm(self.default_evening_reminder_time, default=(20, 0))
+
+    @property
+    def default_day_before_reminder_hhmm(self) -> tuple[int, int]:
+        return parse_hhmm(self.default_day_before_reminder_time, default=(20, 0))
+
+    @property
     def daily_agenda_hhmm(self) -> tuple[int, int]:
         return parse_hhmm(self.daily_agenda_time, default=(7, 0))
 
@@ -82,12 +96,34 @@ def load_settings() -> Settings:
         reminder_tick_seconds=parse_int(get("REMINDER_TICK_SECONDS", "60"), default=60, min_value=10),
         timezone=get("TIMEZONE", "Europe/Moscow").strip() or "Europe/Moscow",
         default_day_reminder_time=get("DEFAULT_DAY_REMINDER_TIME", "09:00").strip() or "09:00",
+        default_evening_reminder_time=get("DEFAULT_EVENING_REMINDER_TIME", "20:00").strip() or "20:00",
+        default_day_before_reminder_time=get("DEFAULT_DAY_BEFORE_REMINDER_TIME", "20:00").strip() or "20:00",
         default_timed_event_offset_minutes=parse_int(
             get("DEFAULT_TIMED_EVENT_OFFSET_MINUTES", "120"),
             default=120,
             min_value=0,
         ),
+        default_exact_time_today_offsets_minutes=_parse_int_list(
+            get("DEFAULT_EXACT_TIME_TODAY_OFFSETS_MINUTES", "60,15"),
+            default=[60, 15],
+            min_value=0,
+        ),
+        default_exact_time_future_offsets_minutes=_parse_int_list(
+            get("DEFAULT_EXACT_TIME_FUTURE_OFFSETS_MINUTES", "60,15"),
+            default=[60, 15],
+            min_value=0,
+        ),
         default_birthday_offsets_minutes=birthday_offsets,
+        default_deadline_days_before=_parse_int_list(
+            get("DEFAULT_DEADLINE_DAYS_BEFORE", "3,1"),
+            default=[3, 1],
+            min_value=1,
+        ),
+        default_annual_days_before=_parse_int_list(
+            get("DEFAULT_ANNUAL_DAYS_BEFORE", "7,1"),
+            default=[7, 1],
+            min_value=1,
+        ),
         materialize_days=parse_int(get("MATERIALIZE_DAYS", "180"), default=180, min_value=7),
         daily_agenda_enabled=parse_bool(get("DAILY_AGENDA_ENABLED", "true")),
         daily_agenda_time=get("DAILY_AGENDA_TIME", "07:00").strip() or "07:00",
@@ -124,3 +160,12 @@ def _parse_float(value: str, *, default: float, min_value: float) -> float:
         return max(min_value, float(value))
     except (TypeError, ValueError):
         return default
+
+
+def _parse_int_list(value: str, *, default: list[int], min_value: int) -> list[int]:
+    parsed = [
+        parse_int(part, default=min_value, min_value=min_value)
+        for part in str(value or "").split(",")
+        if part.strip()
+    ]
+    return parsed or default

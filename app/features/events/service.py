@@ -19,6 +19,7 @@ from app.features.events.models import (
     occurrence_view_from_row,
 )
 from app.features.events.recurrence import occurrence_datetimes
+from app.features.notifications.policy import build_notification_rules
 
 
 ACTIVE = "active"
@@ -30,8 +31,14 @@ PENDING = "pending"
 class EventDefaults:
     timezone: str
     day_reminder_hhmm: tuple[int, int] = (9, 0)
+    evening_reminder_hhmm: tuple[int, int] = (20, 0)
+    day_before_reminder_hhmm: tuple[int, int] = (20, 0)
     timed_event_offset_minutes: int = 120
+    exact_time_today_offsets_minutes: tuple[int, ...] = (60, 15)
+    exact_time_future_offsets_minutes: tuple[int, ...] = (60, 15)
     birthday_offsets_minutes: tuple[int, ...] = (1440, 0)
+    deadline_days_before: tuple[int, ...] = (3, 1)
+    annual_days_before: tuple[int, ...] = (7, 1)
     materialize_days: int = 180
 
 
@@ -95,7 +102,7 @@ class EventService:
                     iso(created),
                 ),
             )
-            for offset in self._notification_offsets(item, event_type=event_type, all_day=all_day, has_time=bool(start_at or event_time)):
+            for rule in build_notification_rules(item, now=now, defaults=self.defaults):
                 conn.execute(
                     """
                     INSERT INTO notification_rules (
@@ -107,10 +114,10 @@ class EventService:
                     (
                         new_id("rule_"),
                         event_id,
-                        "relative",
-                        offset["minutes_before"],
-                        "",
-                        offset["source"],
+                        rule.kind,
+                        rule.minutes_before,
+                        rule.time_of_day,
+                        rule.source,
                         1,
                         iso(created),
                     ),
@@ -179,7 +186,9 @@ class EventService:
                     continue
                 occurrence_id = row["id"]
                 for rule in rules:
-                    notify_at = occurs_at - timedelta(minutes=rule.minutes_before)
+                    notify_at = _notification_datetime(occurs_at, rule, default_hhmm=self.defaults.day_reminder_hhmm)
+                    if notify_at < now.replace(microsecond=0):
+                        continue
                     conn.execute(
                         """
                         INSERT INTO notification_jobs (
@@ -373,38 +382,20 @@ class EventService:
                 (iso(now), event_id),
             )
 
-    def _notification_offsets(self, item: dict[str, Any], *, event_type: str, all_day: bool, has_time: bool) -> list[dict[str, Any]]:
-        raw_offsets = item.get("notification_offsets")
-        if isinstance(raw_offsets, list) and raw_offsets:
-            offsets: list[dict[str, Any]] = []
-            for raw in raw_offsets:
-                if not isinstance(raw, dict):
-                    continue
-                offsets.append(
-                    {
-                        "minutes_before": max(0, int(raw.get("minutes_before") or 0)),
-                        "source": _clean(raw.get("source")) or "explicit",
-                    }
-                )
-            if offsets:
-                return offsets
-
-        if event_type in ("birthday", "anniversary"):
-            return [
-                {"minutes_before": minutes, "source": "default"}
-                for minutes in self.defaults.birthday_offsets_minutes
-            ]
-        if has_time and not all_day:
-            return [{"minutes_before": self.defaults.timed_event_offset_minutes, "source": "default"}]
-        return [{"minutes_before": 0, "source": "default"}]
-
-
 def _event_time(event: Event, default_hhmm: tuple[int, int]):
     if event.event_time:
         return parse_time(event.event_time, default=default_hhmm)
     if event.start_at:
         return event.start_at.time().replace(second=0, microsecond=0)
     return parse_time(None, default=default_hhmm)
+
+
+def _notification_datetime(occurs_at: datetime, rule, *, default_hhmm: tuple[int, int]) -> datetime:
+    if rule.kind == "time_of_day":
+        notify_date = occurs_at.date() - timedelta(days=rule.minutes_before)
+        notify_time = parse_time(rule.time_of_day, default=default_hhmm)
+        return datetime.combine(notify_date, notify_time)
+    return occurs_at - timedelta(minutes=rule.minutes_before)
 
 
 def _normalize_recurrence(value: dict[str, Any]) -> dict[str, Any]:
@@ -431,4 +422,3 @@ def _parse_datetime_or_none(value: Any) -> datetime | None:
 
 def _clean(value: Any) -> str:
     return str(value or "").strip()
-

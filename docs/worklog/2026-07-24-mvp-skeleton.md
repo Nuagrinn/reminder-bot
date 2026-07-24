@@ -155,6 +155,37 @@ Date: 2026-07-24
     `interval=2`.
 - Added tests for compact Claude normalization and prompt safety.
 
+## Temporal-Profile Notification Policy
+
+- Replaced domain-type-first notification defaults with temporal profiles:
+  - `moment_reminder`;
+  - `exact_time`;
+  - `day_task`;
+  - `deadline`;
+  - `time_window`;
+  - `recurring_exact_time`;
+  - `recurring_day_task`;
+  - `annual_date`.
+- Prompt/schema moved to `reminder-parser-v3`.
+- Claude/fake parsers now include `temporal_profile`.
+- Compact Claude normalization derives `temporal_profile` if Claude omits it.
+- Added `app/features/notifications/policy.py`.
+- Default policies:
+  - relative delay -> in the target moment;
+  - exact time today -> 1 hour and 15 minutes before;
+  - exact future time -> evening before, 1 hour before, 15 minutes before;
+  - day task -> evening before, morning in day, evening check;
+  - recurring day task -> morning/evening in day, plus evening before for
+    weekly/monthly;
+  - annual date -> week before, evening before, morning in day.
+- `notification_rules` now use both:
+  - `kind=relative`;
+  - `kind=time_of_day`.
+- Confirmation preview now shows the calculated default reminder pattern.
+- Verified:
+  - fake parse preview for `надо завтра пополнить карту наличкой`;
+  - live Claude parse preview for `25 июля в 15:30 оплатить счет`.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

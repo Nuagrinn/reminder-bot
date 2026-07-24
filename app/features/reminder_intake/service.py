@@ -9,6 +9,7 @@ from assistant_toolkit.db import Database
 from app.core.ids import new_id
 from app.core.time import iso
 from app.features.events.service import EventService
+from app.features.notifications.policy import annotate_notification_preview
 from app.features.reminder_intake.agent import (
     ReminderParseRequest,
     ReminderParseResult,
@@ -39,7 +40,13 @@ class ReminderIntakeService:
 
     def parse(self, request: ReminderParseRequest) -> ReminderParseResult:
         try:
-            return self.parser.parse(request)
+            parse_result = self.parser.parse(request)
+            annotate_notification_preview(
+                parse_result.payload,
+                now=request.now,
+                defaults=self.events.defaults,
+            )
+            return parse_result
         except Exception as exc:
             self._record_attempt(
                 attempt_id=new_id("parse_"),
@@ -60,6 +67,11 @@ class ReminderIntakeService:
         created_at = request.now.replace(microsecond=0)
         attempt_id = new_id("parse_")
         payload = parse_result.payload
+        annotate_notification_preview(
+            payload,
+            now=request.now,
+            defaults=self.events.defaults,
+        )
         event_ids: list[str] = []
         if payload.get("intent") == "create" and payload.get("status") == "ok":
             for item in payload.get("items", []):

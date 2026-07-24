@@ -187,6 +187,9 @@ def _recurrence_label(item: dict[str, Any]) -> str:
 def _notification_label(item: dict[str, Any]) -> str:
     offsets = item.get("notification_offsets") or []
     if not offsets:
+        preview = item.get("notification_preview") or []
+        if isinstance(preview, list) and preview:
+            return ", ".join(str(label) for label in preview[:5])
         return "по умолчанию"
     labels = []
     for offset in offsets:

@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from assistant_toolkit.llm import StructuredClaudeRunner
 
+from app.features.notifications.policy import VALID_TEMPORAL_PROFILES, derive_temporal_profile
 from app.features.reminder_intake.schema import PROMPT_VERSION, REMINDER_JSON_SCHEMA
 
 
@@ -153,6 +154,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
     recurrence = _recurrence_none()
     all_day = True
     title_source = text
+    temporal_profile = "floating"
 
     daily_interval = _daily_interval(low)
     if daily_interval:
@@ -174,6 +176,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
             },
         }
         event_type = "habit"
+        temporal_profile = "recurring_exact_time" if time_text else "recurring_day_task"
         title_source = _strip_recurrence_words(text)
 
     if schedule is None and "кажд" in low:
@@ -191,6 +194,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
                     "recurrence": {**_recurrence_none(), "frequency": "weekly", "weekdays": [weekday]},
                 }
                 event_type = "habit"
+                temporal_profile = "recurring_exact_time" if time_text else "recurring_day_task"
                 title_source = _remove_patterns(low, [r"кажд\w+\s+\w+"])
                 break
 
@@ -215,6 +219,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
             },
         }
         event_type = "birthday"
+        temporal_profile = "annual_date"
         title_source = _birthday_title(text)
 
     if schedule is None:
@@ -231,6 +236,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
                 "precision": "datetime" if target["time"] else "date",
                 "recurrence": recurrence,
             }
+            temporal_profile = str(target.get("temporal_profile") or ("exact_time" if target["time"] else "day_task"))
             title_source = _strip_time_words(text)
 
     if schedule is None:
@@ -241,6 +247,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
         "title": _title(title_source),
         "description": "",
         "event_type": event_type,
+        "temporal_profile": temporal_profile,
         "priority": "normal",
         "schedule": schedule,
         "notification_offsets": _explicit_offsets(low),
@@ -273,6 +280,7 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
                 "start_at": target.isoformat(timespec="seconds"),
                 "date": target.date().isoformat(),
                 "time": target.strftime("%H:%M"),
+                "temporal_profile": "moment_reminder",
             }
         date_match = re.search(r"(\d{1,2})\s+([а-яё]+)", low)
         if not date_match:
@@ -283,8 +291,13 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
             return None
         target_date = _next_date(day=day, month=month, now=now).date()
     if time_text:
-        return {"start_at": f"{target_date.isoformat()}T{time_text}:00", "date": target_date.isoformat(), "time": time_text}
-    return {"start_at": None, "date": target_date.isoformat(), "time": None}
+        return {
+            "start_at": f"{target_date.isoformat()}T{time_text}:00",
+            "date": target_date.isoformat(),
+            "time": time_text,
+            "temporal_profile": "exact_time",
+        }
+    return {"start_at": None, "date": target_date.isoformat(), "time": None, "temporal_profile": "day_task"}
 
 
 def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
@@ -347,11 +360,18 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
 
     title = _title(_clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text)
     all_day = not bool(event_time or start_at)
+    raw_temporal_profile = _clean(
+        compact.get("temporal_profile")
+        or compact.get("profile")
+        or compact.get("schedule_profile")
+        or compact.get("temporal_type")
+    ).lower()
     item = {
         "client_ref": "item_1",
         "title": title,
         "description": _clean(compact.get("description")),
         "event_type": event_type if event_type in {"task", "calendar_event", "deadline", "birthday", "anniversary", "habit"} else ("habit" if is_recurring else "task"),
+        "temporal_profile": raw_temporal_profile if raw_temporal_profile in VALID_TEMPORAL_PROFILES else "",
         "priority": _priority(compact.get("priority")),
         "schedule": {
             "kind": "recurring" if is_recurring else "once",
@@ -367,6 +387,8 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
         "confidence": _coerce_float(compact.get("confidence") or payload.get("confidence"), default=0.7),
         "assumptions": ["Claude compact output normalized by reminder-bot."],
     }
+    if not item["temporal_profile"]:
+        item["temporal_profile"] = "moment_reminder" if _looks_like_moment_reminder(raw_text) else derive_temporal_profile(item)
     return _base(raw_text, items=[item])
 
 
@@ -575,6 +597,13 @@ def _priority(value: Any) -> str:
 def _offset_source(value: Any) -> str:
     source = _clean(value).lower()
     return source if source in {"explicit", "default_suggested"} else "explicit"
+
+
+def _looks_like_moment_reminder(raw_text: str) -> bool:
+    low = raw_text.lower()
+    if re.search(r"\bчерез\s+(\d+|один|одну|пару)\s+", low):
+        return True
+    return bool(re.search(r"^\s*напомн\w+\s+(?:мне\s+)?(?:сегодня|завтра|послезавтра|в\s+\d)", low))
 
 
 def _extract_time(low: str) -> str | None:

@@ -5,6 +5,8 @@ from unittest import TestCase
 
 from app.adapters.telegram.formatters import format_daily_agenda, format_parse_confirmation
 from app.adapters.telegram.keyboards import CONFIRM_REMINDER_PREFIX, confirmation_keyboard, main_keyboard
+from app.features.events.service import EventDefaults
+from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import OccurrenceView
 from app.features.reminder_intake.agent import FakeReminderParserAgent
 from tests.test_fake_parser import request
@@ -13,12 +15,18 @@ from tests.test_fake_parser import request
 class TelegramFormattersTest(TestCase):
     def test_confirmation_text_contains_parsed_reminder(self) -> None:
         parse_result = FakeReminderParserAgent().parse(request("надо завтра пополнить карту наличкой"))
+        annotate_notification_preview(
+            parse_result.payload,
+            now=datetime(2026, 7, 24, 12, 0),
+            defaults=EventDefaults(timezone="Europe/Moscow"),
+        )
 
         text = format_parse_confirmation(parse_result)
 
         self.assertIn("Проверь напоминание", text)
         self.assertIn("Пополнить карту наличкой", text)
         self.assertIn("25.07.2026", text)
+        self.assertIn("вечером за день", text)
 
     def test_confirmation_text_contains_daily_interval(self) -> None:
         parse_result = FakeReminderParserAgent().parse(request("каждые два дня проверять почту"))

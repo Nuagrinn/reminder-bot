@@ -38,6 +38,25 @@ class LoadSettingsTest(TestCase):
         self.assertEqual(settings.daily_agenda_hhmm, (7, 30))
         self.assertEqual(settings.daily_agenda_limit, 25)
 
+    def test_default_notification_policy_settings(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_OWNER_ID": "12345",
+                "DEFAULT_EVENING_REMINDER_TIME": "21:15",
+                "DEFAULT_DAY_BEFORE_REMINDER_TIME": "19:45",
+                "DEFAULT_EXACT_TIME_TODAY_OFFSETS_MINUTES": "45,10",
+                "DEFAULT_DEADLINE_DAYS_BEFORE": "5,2",
+            },
+        ):
+            settings = load_settings()
+
+        self.assertEqual(settings.default_evening_reminder_hhmm, (21, 15))
+        self.assertEqual(settings.default_day_before_reminder_hhmm, (19, 45))
+        self.assertEqual(settings.default_exact_time_today_offsets_minutes, [45, 10])
+        self.assertEqual(settings.default_deadline_days_before, [5, 2])
+
     def test_claude_budget_settings(self) -> None:
         with patch.dict(
             os.environ,

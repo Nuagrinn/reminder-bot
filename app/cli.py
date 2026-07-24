@@ -40,7 +40,7 @@ def cmd_parse_preview(args) -> None:
     settings = load_settings()
     services = AppServices(settings)
     now = local_now(settings.timezone)
-    result = services.parser.parse(_request(settings, args.text, "text", now))
+    result = services.intake.parse(_request(settings, args.text, "text", now))
     print(json.dumps(result.payload, ensure_ascii=False, indent=2))
 
 

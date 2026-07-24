@@ -23,6 +23,7 @@ class ClaudeNormalizationTest(TestCase):
 
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(item["title"], "Оплатить счет")
+        self.assertEqual(item["temporal_profile"], "exact_time")
         self.assertEqual(item["schedule"]["kind"], "once")
         self.assertEqual(item["schedule"]["date"], "2026-07-25")
         self.assertEqual(item["schedule"]["time"], "15:30")
@@ -43,6 +44,7 @@ class ClaudeNormalizationTest(TestCase):
         item = payload["items"][0]
 
         self.assertEqual(item["event_type"], "habit")
+        self.assertEqual(item["temporal_profile"], "recurring_exact_time")
         self.assertEqual(item["schedule"]["kind"], "recurring")
         self.assertEqual(item["schedule"]["date"], "2026-07-25")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "daily")
@@ -71,7 +73,22 @@ class ClaudeNormalizationTest(TestCase):
         item = payload["items"][0]
 
         self.assertEqual(item["event_type"], "birthday")
+        self.assertEqual(item["temporal_profile"], "annual_date")
         self.assertEqual(item["schedule"]["kind"], "recurring")
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "yearly")
         self.assertEqual(item["schedule"]["recurrence"]["months"], [8])
         self.assertEqual(item["schedule"]["recurrence"]["month_days"], [12])
+
+    def test_relative_delay_without_profile_becomes_moment_reminder(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "проверить духовку",
+                "datetime": "2026-07-24T14:00:00",
+                "date": "2026-07-24",
+                "time": "14:00",
+            },
+            request("через 2 часа проверить духовку"),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "moment_reminder")

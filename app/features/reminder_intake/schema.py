@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-PROMPT_VERSION = "reminder-parser-v2"
+PROMPT_VERSION = "reminder-parser-v3"
 
 REMINDER_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -30,6 +30,7 @@ REMINDER_JSON_SCHEMA: dict[str, Any] = {
                     "title",
                     "description",
                     "event_type",
+                    "temporal_profile",
                     "priority",
                     "schedule",
                     "notification_offsets",
@@ -43,6 +44,20 @@ REMINDER_JSON_SCHEMA: dict[str, Any] = {
                     "event_type": {
                         "type": "string",
                         "enum": ["task", "calendar_event", "deadline", "birthday", "anniversary", "habit"],
+                    },
+                    "temporal_profile": {
+                        "type": "string",
+                        "enum": [
+                            "moment_reminder",
+                            "exact_time",
+                            "day_task",
+                            "deadline",
+                            "time_window",
+                            "recurring_exact_time",
+                            "recurring_day_task",
+                            "annual_date",
+                            "floating",
+                        ],
                     },
                     "priority": {"type": "string", "enum": ["low", "normal", "high"]},
                     "schedule": {

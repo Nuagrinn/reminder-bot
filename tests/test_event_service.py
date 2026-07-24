@@ -45,27 +45,40 @@ class EventServiceTests(unittest.TestCase):
     def test_creates_one_off_all_day_event_and_default_job(self) -> None:
         event = self._create("надо завтра пополнить карту наличкой")
         upcoming = self.service.upcoming(now=self.now, limit=10)
+        due_day_before = self.service.due_jobs(now=datetime(2026, 7, 24, 20, 0), limit=10)
+        due_evening_check = self.service.due_jobs(now=datetime(2026, 7, 25, 20, 0), limit=10)
 
         self.assertEqual(event.title, "Пополнить карту наличкой")
         self.assertEqual(len(upcoming), 1)
         self.assertEqual(upcoming[0].occurs_at, datetime(2026, 7, 25, 9, 0))
-        self.assertEqual(upcoming[0].next_notify_at, datetime(2026, 7, 25, 9, 0))
+        self.assertEqual(upcoming[0].next_notify_at, datetime(2026, 7, 24, 20, 0))
+        self.assertEqual(due_day_before[0].notify_at, datetime(2026, 7, 24, 20, 0))
+        self.assertEqual(due_evening_check[-1].notify_at, datetime(2026, 7, 25, 20, 0))
 
     def test_due_job_for_relative_timed_event(self) -> None:
         self._create("через 2 часа проверить духовку")
-        due = self.service.due_jobs(now=self.now, limit=10)
+        due = self.service.due_jobs(now=datetime(2026, 7, 24, 14, 0), limit=10)
 
         self.assertEqual(len(due), 1)
         self.assertEqual(due[0].occurs_at, datetime(2026, 7, 24, 14, 0))
-        self.assertEqual(due[0].notify_at, datetime(2026, 7, 24, 12, 0))
+        self.assertEqual(due[0].notify_at, datetime(2026, 7, 24, 14, 0))
+
+    def test_today_exact_time_gets_hour_and_quarter_jobs(self) -> None:
+        self._create("сегодня в 15:30 оплатить счет")
+        due_first = self.service.due_jobs(now=datetime(2026, 7, 24, 14, 30), limit=10)
+        due_second = self.service.due_jobs(now=datetime(2026, 7, 24, 15, 15), limit=10)
+
+        self.assertEqual(due_first[0].notify_at, datetime(2026, 7, 24, 14, 30))
+        self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 15, 15))
 
     def test_snooze_creates_new_pending_job(self) -> None:
         self._create("через 2 часа проверить духовку")
-        job = self.service.due_jobs(now=self.now, limit=10)[0]
-        self.service.mark_job_sent(job.job_id, message_id=123, now=self.now)
-        new_job_id = self.service.snooze_job(job.job_id, minutes=60, now=self.now)
-        due_now = self.service.due_jobs(now=self.now, limit=10)
-        due_later = self.service.due_jobs(now=datetime(2026, 7, 24, 13, 0), limit=10)
+        due_at_event = datetime(2026, 7, 24, 14, 0)
+        job = self.service.due_jobs(now=due_at_event, limit=10)[0]
+        self.service.mark_job_sent(job.job_id, message_id=123, now=due_at_event)
+        new_job_id = self.service.snooze_job(job.job_id, minutes=60, now=due_at_event)
+        due_now = self.service.due_jobs(now=due_at_event, limit=10)
+        due_later = self.service.due_jobs(now=datetime(2026, 7, 24, 15, 0), limit=10)
 
         self.assertTrue(new_job_id.startswith("job_"))
         self.assertEqual(len(due_now), 0)
@@ -92,11 +105,14 @@ class EventServiceTests(unittest.TestCase):
     def test_birthday_creates_two_default_jobs(self) -> None:
         self._create("12 августа день рождения Маши")
         upcoming = self.service.upcoming(now=self.now, limit=3)
-        due_day_before = self.service.due_jobs(now=datetime(2026, 8, 11, 9, 0), limit=10)
+        due_week_before = self.service.due_jobs(now=datetime(2026, 8, 5, 9, 0), limit=10)
+        due_day_before = self.service.due_jobs(now=datetime(2026, 8, 11, 20, 0), limit=10)
+        day_before_notify_times = [item.notify_at for item in due_day_before]
 
         self.assertEqual(upcoming[0].occurs_at, datetime(2026, 8, 12, 9, 0))
-        self.assertEqual(len(due_day_before), 1)
-        self.assertEqual(due_day_before[0].notify_at, datetime(2026, 8, 11, 9, 0))
+        self.assertEqual(len(due_week_before), 1)
+        self.assertEqual(due_week_before[0].notify_at, datetime(2026, 8, 5, 9, 0))
+        self.assertIn(datetime(2026, 8, 11, 20, 0), day_before_notify_times)
 
 
 if __name__ == "__main__":

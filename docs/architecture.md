@@ -10,6 +10,7 @@ Fast personal reminders from Telegram text or voice:
 Telegram text/voice
   -> optional STT
   -> reminder parser
+  -> notification policy
   -> event service
   -> SQLite
   -> notification job
@@ -23,8 +24,9 @@ Telegram text/voice
 - Voice intake through `assistant_toolkit.speech`.
 - Fake parser for local no-LLM development.
 - Claude CLI parser through `assistant_toolkit.llm.StructuredClaudeRunner`.
-- Claude prompt/schema version `reminder-parser-v2`.
+- Claude prompt/schema version `reminder-parser-v3`.
 - Compact Claude JSON normalization before persistence.
+- Temporal-profile notification policy before persistence.
 - One-off events.
 - Basic recurring events:
   - daily with interval;
@@ -63,6 +65,8 @@ app/
     migrations/
 
   features/
+    notifications/
+      policy.py
     reminder_intake/
       agent.py
       factory.py
@@ -83,11 +87,27 @@ app/
 ## Data model
 
 `events` store the semantic reminder. `event_occurrences` store concrete future
-dates. `notification_rules` store relative reminder offsets. `notification_jobs`
-store concrete Telegram sends.
+dates. `notification_rules` store relative reminder offsets and time-of-day
+rules. `notification_jobs` store concrete Telegram sends.
 
 Claude/fake parser never writes to SQLite directly. It returns a JSON payload;
 Python normalizes the shape, applies defaults and persists events.
+
+## Temporal Profiles
+
+Notification defaults are driven by `temporal_profile`, not by a narrow domain
+category:
+
+- `moment_reminder`: remind at the target moment itself.
+- `exact_time`: concrete date/time, with short pre-event reminders.
+- `day_task`: date without exact time, with morning and evening checks.
+- `deadline`: due-by phrasing, with earlier warnings.
+- `time_window`: start/end window, using the window start for reminders.
+- `recurring_exact_time`: recurring item with exact time.
+- `recurring_day_task`: recurring item without exact time.
+- `annual_date`: yearly date such as birthdays.
+
+Explicit offsets from the user override temporal-profile defaults.
 
 ## Assistant Toolkit usage
 

@@ -12,8 +12,11 @@ class PromptTest(TestCase):
     def test_prompt_contains_claude_recurrence_rules(self) -> None:
         prompt = build_system_prompt(request("каждые два дня проверять почту"))
 
-        self.assertEqual(PROMPT_VERSION, "reminder-parser-v2")
+        self.assertEqual(PROMPT_VERSION, "reminder-parser-v3")
         self.assertTrue(prompt.isascii())
+        self.assertIn("temporal_profile", prompt)
+        self.assertIn("moment_reminder", prompt)
+        self.assertIn("event_type is secondary", prompt)
         self.assertIn("daily recurrence interval=2", prompt)
         self.assertIn("weekly recurrence interval=2", prompt)
         self.assertIn("do not use custom_rrule", prompt)

@@ -6,13 +6,27 @@ Date: 2026-07-24
 
 1. Real parser quality - initial Claude path done
    - Local `.env` can run `PARSER_PROVIDER=claude_cli`.
-   - Prompt/schema version is `reminder-parser-v2`.
+   - Prompt/schema version is `reminder-parser-v3`.
    - Exact date/time parsing is verified through Claude CLI.
    - Recurring interval parsing is verified through Claude CLI.
    - Compact Claude output is normalized into the internal reminder schema.
    - Remaining work: collect parser tests from real phrases sent in Telegram.
 
-2. Recurring reminders with intervals - done in MVP parser
+2. Temporal-profile notification policy - done
+   - Default reminders are based on time shape, not narrow event categories.
+   - Profiles:
+     - `moment_reminder`;
+     - `exact_time`;
+     - `day_task`;
+     - `deadline`;
+     - `time_window`;
+     - `recurring_exact_time`;
+     - `recurring_day_task`;
+     - `annual_date`.
+   - Explicit user offsets override defaults.
+   - Confirmation preview shows the planned reminder pattern.
+
+3. Recurring reminders with intervals - done in MVP parser
    - Support phrases like `день через день надо делать замер веса`.
    - Support phrases like `каждые два дня проверять почту`.
    - Store this as `frequency=daily` with `interval=2`.
@@ -20,7 +34,7 @@ Date: 2026-07-24
    - Current state: recurrence engine, fake parser, formatter and Claude prompt
      are updated.
 
-3. Morning daily agenda - done
+4. Morning daily agenda - done
    - Every morning at `07:00 Europe/Moscow`, send today's planned reminders.
    - Config:
      - `DAILY_AGENDA_ENABLED=true`;
@@ -32,8 +46,9 @@ Date: 2026-07-24
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
    parse poorly.
-2. Add clarification buttons for missing date/time.
-3. Add edit controls on the confirmation screen.
+2. Add edit controls on the confirmation screen for reminder pattern:
+   default / only in moment / custom offset.
+3. Add clarification buttons for missing date/time.
 
 ## P1 - Near Next
 

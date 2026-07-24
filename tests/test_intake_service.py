@@ -57,6 +57,20 @@ class IntakeServiceTests(unittest.TestCase):
             self.assertEqual(len(events_after), 1)
             self.assertEqual(len(attempts_after), 1)
 
+    def test_parse_logs_clarification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / "reminder.sqlite3", migrations_dir=MIGRATIONS_DIR)
+            db.migrate()
+            events = EventService(db, EventDefaults(timezone="Europe/Moscow"))
+            intake = ReminderIntakeService(db, FakeReminderParserAgent(), events)
+
+            with self.assertLogs("app.features.reminder_intake.service", level="INFO") as logs:
+                result = intake.parse(request("пополнить карту"))
+
+            self.assertEqual(result.payload["status"], "needs_clarification")
+            self.assertIn("Reminder clarification needed", "\n".join(logs.output))
+            self.assertIn("Когда напомнить?", "\n".join(logs.output))
+
 
 if __name__ == "__main__":
     unittest.main()

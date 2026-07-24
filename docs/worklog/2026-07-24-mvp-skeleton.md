@@ -208,6 +208,30 @@ Date: 2026-07-24
   - recurrence `until`;
   - Telegram delete-scope keyboards.
 
+## List Detail Actions And Clarification Logging
+
+- `/today`, `/week`, `/month`, `/upcoming` now show numbered inline buttons for
+  each occurrence.
+- Daily agenda uses the same occurrence buttons when the day has items.
+- Added occurrence detail card with:
+  - `Готово`;
+  - `Удалить`.
+- Delete from occurrence detail reuses the existing scoped delete flow.
+- Added `EventService.get_occurrence`.
+- Clarification parse results now write INFO logs through
+  `app.features.reminder_intake.service`.
+- Clarification log fields:
+  - source kind;
+  - parser provider/model/prompt version;
+  - question;
+  - options;
+  - shortened raw text.
+- Added tests for:
+  - occurrence detail retrieval;
+  - occurrence list/detail keyboards;
+  - occurrence detail formatter;
+  - clarification logging.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

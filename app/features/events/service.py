@@ -271,6 +271,33 @@ class EventService:
             ).fetchall()
         return [occurrence_view_from_row(row) for row in rows]
 
+    def get_occurrence(self, occurrence_id: str) -> OccurrenceView:
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    eo.id AS occurrence_id,
+                    eo.event_id,
+                    eo.occurs_at,
+                    eo.occurrence_date,
+                    eo.status AS occurrence_status,
+                    e.title,
+                    e.description,
+                    e.event_type,
+                    e.status AS event_status,
+                    MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
+                FROM event_occurrences eo
+                JOIN events e ON e.id = eo.event_id
+                LEFT JOIN notification_jobs nj ON nj.occurrence_id = eo.id
+                WHERE eo.id = ?
+                GROUP BY eo.id
+                """,
+                (occurrence_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError(f"Occurrence not found: {occurrence_id}")
+        return occurrence_view_from_row(row)
+
     def upcoming(self, *, now: datetime, limit: int = 20) -> list[OccurrenceView]:
         end_at = now + timedelta(days=self.defaults.materialize_days)
         return self.list_occurrences(start_at=now, end_at=end_at, limit=limit)

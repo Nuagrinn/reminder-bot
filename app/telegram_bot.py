@@ -30,6 +30,7 @@ from app.adapters.telegram.formatters import (
     format_due_notification,
     format_event_deleted,
     format_intake_result,
+    format_occurrence_detail,
     format_occurrence_list,
     format_occurrence_deleted,
     format_parse_confirmation,
@@ -47,11 +48,14 @@ from app.adapters.telegram.keyboards import (
     DELETE_SERIES_FROM_PREFIX,
     DISCARD_REMINDER_PREFIX,
     DONE_PREFIX,
+    OCCURRENCE_DETAIL_PREFIX,
     SNOOZE_PREFIX,
     confirmation_keyboard,
     delete_scope_keyboard,
     due_keyboard,
     main_keyboard,
+    occurrence_detail_keyboard,
+    occurrence_list_keyboard,
 )
 from app.config import Settings, load_settings
 from app.core.ids import new_id
@@ -169,7 +173,7 @@ async def _show_range(
         update,
         format_occurrence_list(items, title=title, empty_text=empty_text),
         parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
+        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
     )
 
 
@@ -184,7 +188,7 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         update,
         format_occurrence_list(items, title="Ближайшие", empty_text="Ближайших напоминаний нет."),
         parse_mode=ParseMode.HTML,
-        reply_markup=main_keyboard(),
+        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
     )
 
 
@@ -346,7 +350,7 @@ async def send_daily_agenda(context: ContextTypes.DEFAULT_TYPE) -> None:
             chat_id=owner_id,
             text=format_daily_agenda(items),
             parse_mode=ParseMode.HTML,
-            reply_markup=main_keyboard(),
+            reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
         )
     except Exception:
         log.exception("Failed to send daily agenda")
@@ -362,6 +366,26 @@ async def done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await asyncio.to_thread(services.events.complete_occurrence, occurrence_id, now=now)
     await query.answer("Готово")
     await query.edit_message_text(format_done())
+
+
+async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(OCCURRENCE_DETAIL_PREFIX)
+    services = _services(context)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+    except Exception:
+        log.exception("Occurrence detail failed")
+        await query.answer("Не нашел напоминание", show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_text(
+        format_occurrence_detail(occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=occurrence_detail_keyboard(occurrence.occurrence_id),
+    )
 
 
 async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -516,6 +540,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CommandHandler("add", add_command))
     app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(delete_menu_callback, pattern=f"^{DELETE_MENU_PREFIX}"))

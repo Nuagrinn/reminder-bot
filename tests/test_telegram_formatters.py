@@ -3,17 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 from unittest import TestCase
 
-from app.adapters.telegram.formatters import format_daily_agenda, format_parse_confirmation
+from app.adapters.telegram.formatters import format_daily_agenda, format_occurrence_detail, format_parse_confirmation
 from app.adapters.telegram.keyboards import (
     CONFIRM_REMINDER_PREFIX,
     DELETE_MENU_PREFIX,
     DELETE_OCCURRENCE_PREFIX,
     DELETE_SERIES_FROM_PREFIX,
+    DONE_PREFIX,
+    OCCURRENCE_DETAIL_PREFIX,
     SNOOZE_PREFIX,
     confirmation_keyboard,
     delete_scope_keyboard,
     due_keyboard,
     main_keyboard,
+    occurrence_detail_keyboard,
+    occurrence_list_keyboard,
 )
 from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
@@ -81,21 +85,46 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("🗓 Неделя", labels)
         self.assertIn("🗂 Месяц", labels)
 
+    def test_occurrence_list_keyboard_uses_numbered_detail_buttons(self) -> None:
+        item = occurrence()
+
+        keyboard = occurrence_list_keyboard([item])
+
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{OCCURRENCE_DETAIL_PREFIX}occ_1")
+        self.assertIn("1.", keyboard.inline_keyboard[0][0].text)
+
+    def test_occurrence_detail_keyboard_has_done_and_delete(self) -> None:
+        keyboard = occurrence_detail_keyboard("occ_1")
+
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{DONE_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
+
+    def test_occurrence_detail_text_contains_actions_context(self) -> None:
+        text = format_occurrence_detail(occurrence())
+
+        self.assertIn("Напоминание", text)
+        self.assertIn("Проверять почту", text)
+        self.assertIn("25.07.2026 09:00", text)
+
     def test_daily_agenda_uses_today_list(self) -> None:
-        item = OccurrenceView(
-            occurrence_id="occ_1",
-            event_id="evt_1",
-            title="Проверять почту",
-            description="",
-            event_type="habit",
-            occurs_at=datetime(2026, 7, 25, 9, 0),
-            occurrence_date="2026-07-25",
-            occurrence_status="scheduled",
-            event_status="active",
-            next_notify_at=datetime(2026, 7, 25, 9, 0),
-        )
+        item = occurrence()
 
         text = format_daily_agenda([item])
 
         self.assertIn("План на сегодня", text)
         self.assertIn("Проверять почту", text)
+
+
+def occurrence() -> OccurrenceView:
+    return OccurrenceView(
+        occurrence_id="occ_1",
+        event_id="evt_1",
+        title="Проверять почту",
+        description="",
+        event_type="habit",
+        occurs_at=datetime(2026, 7, 25, 9, 0),
+        occurrence_date="2026-07-25",
+        occurrence_status="scheduled",
+        event_status="active",
+        next_notify_at=datetime(2026, 7, 25, 9, 0),
+    )

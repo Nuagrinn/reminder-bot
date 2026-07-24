@@ -50,6 +50,17 @@ Date: 2026-07-24
      - whole series.
    - `recurrence.until` is respected by the recurrence engine.
 
+6. List detail/actions - done
+   - `/today`, `/week`, `/month`, `/upcoming` render numbered action buttons.
+   - Daily agenda also renders action buttons when there are items.
+   - Detail card supports `Готово` and `Удалить`.
+   - Delete from detail reuses recurring scope menu.
+
+7. Clarification diagnostics - done
+   - `needs_clarification` parse results are logged at INFO level.
+   - Logs include provider/model, prompt version, question, options and short
+     raw text.
+
 ## Recommended Next Order
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
@@ -57,8 +68,7 @@ Date: 2026-07-24
 2. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
 3. Add clarification buttons for missing date/time.
-4. Add event detail/actions from `/today`, `/week`, `/month`, not only from due
-   reminders.
+4. Add pagination for long `/upcoming`, `/week`, `/month` lists.
 
 ## P1 - Near Next
 
@@ -75,8 +85,8 @@ Date: 2026-07-24
 
 3. Better list UX
    - Pagination for `/upcoming`, `/week`, `/month`.
-   - Event detail screen.
-   - Delete/snooze/done from list items, not only from due notifications.
+   - Optional back button from detail to the previous list.
+   - Optional snooze from list detail when there is a pending job.
 
 ## P2 - Later
 

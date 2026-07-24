@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -15,6 +16,9 @@ from app.features.reminder_intake.agent import (
     ReminderParseResult,
     ReminderParserAgent,
 )
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,7 @@ class ReminderIntakeService:
                 now=request.now,
                 defaults=self.events.defaults,
             )
+            _log_clarification_if_needed(request, parse_result)
             return parse_result
         except Exception as exc:
             self._record_attempt(
@@ -150,3 +155,31 @@ def _failed_parse_result(
         model=getattr(parser, "model", ""),
         prompt_version=getattr(parser, "prompt_version", ""),
     )
+
+
+def _log_clarification_if_needed(
+    request: ReminderParseRequest,
+    parse_result: ReminderParseResult,
+) -> None:
+    payload = parse_result.payload
+    if payload.get("status") != "needs_clarification":
+        return
+    clarification = payload.get("clarification") if isinstance(payload.get("clarification"), dict) else {}
+    options = clarification.get("options") if isinstance(clarification.get("options"), list) else []
+    log.info(
+        "Reminder clarification needed source_kind=%s provider=%s model=%s prompt_version=%s question=%r options=%s raw_text=%r",
+        request.source_kind,
+        parse_result.provider,
+        parse_result.model,
+        parse_result.prompt_version,
+        str(clarification.get("question") or ""),
+        [str(option) for option in options[:5]],
+        _short_text(request.raw_text),
+    )
+
+
+def _short_text(value: str, *, limit: int = 180) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."

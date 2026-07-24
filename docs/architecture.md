@@ -45,6 +45,8 @@ Telegram text/voice
   - `/add`.
 - Notification actions:
   - done;
+  - open occurrence detail from `/today`, `/week`, `/month`, `/upcoming` and
+    daily agenda;
   - snooze 1 hour;
   - snooze tomorrow;
   - delete one-off event;
@@ -112,6 +114,16 @@ category:
 
 Explicit offsets from the user override temporal-profile defaults.
 
+## List Actions
+
+Occurrence lists render numbered rows and matching inline buttons. Selecting a
+row opens an occurrence detail card with:
+
+- `Готово`;
+- `Удалить`.
+
+The delete action reuses the scoped deletion model for recurring reminders.
+
 ## Deletion Model
 
 One-off deletion cancels the whole event and its pending notification jobs.
@@ -137,6 +149,17 @@ The bot depends on `assistant-toolkit` for infrastructure:
 - `assistant_toolkit.telegram` for HTML formatting helpers.
 
 Domain code stays local to `reminder-bot`.
+
+## Diagnostics
+
+Clarification results are logged at INFO level by
+`app.features.reminder_intake.service` with:
+
+- source kind;
+- parser provider/model/prompt version;
+- clarification question;
+- suggested options;
+- shortened raw text.
 
 ## Next work
 

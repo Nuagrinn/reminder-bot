@@ -55,6 +55,15 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(due_day_before[0].notify_at, datetime(2026, 7, 24, 20, 0))
         self.assertEqual(due_evening_check[-1].notify_at, datetime(2026, 7, 25, 20, 0))
 
+    def test_get_occurrence_returns_detail_view(self) -> None:
+        self._create("надо завтра пополнить карту наличкой")
+        occurrence = self.service.upcoming(now=self.now, limit=1)[0]
+
+        detail = self.service.get_occurrence(occurrence.occurrence_id)
+
+        self.assertEqual(detail.occurrence_id, occurrence.occurrence_id)
+        self.assertEqual(detail.title, "Пополнить карту наличкой")
+
     def test_due_job_for_relative_timed_event(self) -> None:
         self._create("через 2 часа проверить духовку")
         due = self.service.due_jobs(now=datetime(2026, 7, 24, 14, 0), limit=10)

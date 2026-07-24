@@ -3,9 +3,11 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from app.features.events.models import NotificationJobView
+from app.features.events.models import OccurrenceView
 
 
 DONE_PREFIX = "done:"
+OCCURRENCE_DETAIL_PREFIX = "occ_detail:"
 SNOOZE_PREFIX = "snooze:"
 CANCEL_EVENT_PREFIX = "cancel_event:"
 DELETE_MENU_PREFIX = "delete_menu:"
@@ -45,6 +47,29 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
     )
 
 
+def occurrence_list_keyboard(items: list[OccurrenceView]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for index, item in enumerate(items[:100], start=1):
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    _occurrence_button_label(index, item),
+                    callback_data=f"{OCCURRENCE_DETAIL_PREFIX}{item.occurrence_id}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(rows)
+
+
+def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{occurrence_id}")],
+        ]
+    )
+
+
 def delete_scope_keyboard(*, occurrence_id: str, event_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -54,3 +79,10 @@ def delete_scope_keyboard(*, occurrence_id: str, event_id: str) -> InlineKeyboar
             [InlineKeyboardButton("Отмена", callback_data=f"{DELETE_CANCEL_PREFIX}{occurrence_id}")],
         ]
     )
+
+
+def _occurrence_button_label(index: int, item: OccurrenceView) -> str:
+    title = item.title
+    if len(title) > 34:
+        title = f"{title[:31]}..."
+    return f"{index}. {item.occurs_at:%H:%M} · {title}"

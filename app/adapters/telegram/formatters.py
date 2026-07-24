@@ -71,13 +71,27 @@ def format_occurrence_list(items: list[OccurrenceView], *, title: str, empty_tex
         return empty_text
     lines = [f"<b>{h(title)}</b>", f"Всего: <b>{len(items)}</b>", ""]
     current_date = ""
-    for item in items:
+    for index, item in enumerate(items, start=1):
         day = item.occurs_at.strftime("%d.%m.%Y")
         if day != current_date:
             current_date = day
             lines.append(f"<b>{day}</b>")
         time_label = item.occurs_at.strftime("%H:%M")
-        lines.append(f"<code>{time_label}</code> · {h(item.title)}")
+        lines.append(f"<b>{index}.</b> <code>{time_label}</code> · {h(item.title)}")
+    return "\n".join(lines)
+
+
+def format_occurrence_detail(item: OccurrenceView) -> str:
+    lines = [
+        "<b>Напоминание</b>",
+        "",
+        f"<b>{h(item.title)}</b>",
+        f"Когда: <code>{_date_time_label(item.occurs_at)}</code>",
+    ]
+    if item.next_notify_at:
+        lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
+    if item.description:
+        lines.extend(["", h(item.description)])
     return "\n".join(lines)
 
 

@@ -253,6 +253,21 @@ Date: 2026-07-24
   - resolved phrase.
 - Added tests for clarification keyboard callback data.
 
+## Voice Status Reliability
+
+- Checked local logs after a voice test with no visible Telegram reaction.
+- Root cause: the update reached `voice_message`, but Telegram timed out while
+  sending the first status message `Распознаю голосовое...`.
+- Before this fix, that timeout stopped the whole voice flow before download and
+  transcription.
+- Status messages are now best-effort:
+  - if the first status message fails, voice processing continues;
+  - if transcription succeeds, the status message is deleted after the normal
+    parse/confirmation response is sent;
+  - if the final preview cannot be sent, the status message is edited with a
+    short failure notice when possible.
+- Added INFO logs for voice receive/download/transcription/preview stages.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

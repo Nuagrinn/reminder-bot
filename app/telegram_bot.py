@@ -8,7 +8,7 @@ from pathlib import Path
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -125,6 +125,32 @@ async def _answer_long(update: Update, text: str, **kwargs) -> None:
         await update.callback_query.message.reply_text(text, **kwargs)
 
 
+async def _safe_reply_text(message: Message, text: str, **kwargs) -> Message | None:
+    try:
+        return await message.reply_text(text, **kwargs)
+    except Exception:
+        log.warning("Failed to send Telegram status message", exc_info=True)
+        return None
+
+
+async def _safe_edit_message(message: Message | None, text: str, **kwargs) -> None:
+    if not message:
+        return
+    try:
+        await message.edit_text(text, **kwargs)
+    except Exception:
+        log.warning("Failed to edit Telegram status message", exc_info=True)
+
+
+async def _safe_delete_message(message: Message | None) -> None:
+    if not message:
+        return
+    try:
+        await message.delete()
+    except Exception:
+        log.warning("Failed to delete Telegram status message", exc_info=True)
+
+
 def _parse_request(settings: Settings, raw_text: str, source_kind: str, now: datetime) -> ReminderParseRequest:
     return ReminderParseRequest(
         raw_text=raw_text,
@@ -238,22 +264,39 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     services = _services(context)
     voice = update.message.voice
     started = perf_counter()
-    wait_message = await update.message.reply_text("Распознаю голосовое...")
+    log.info("Voice message received file_id=%s duration=%s", _safe_file_id(voice.file_id), voice.duration)
+    wait_message = await _safe_reply_text(update.message, "Распознаю голосовое...")
     audio_path = _voice_audio_path(services, voice.file_id)
     try:
+        log.info("Voice download started file_id=%s", _safe_file_id(voice.file_id))
         tg_file = await context.bot.get_file(voice.file_id)
         await tg_file.download_to_drive(str(audio_path))
+        log.info("Voice transcription started path=%s", audio_path.name)
         transcript = await asyncio.to_thread(services.speech.transcribe, audio_path)
     except SpeechToTextError as exc:
-        await wait_message.edit_text(f"Не смог распознать голосовое.\n\n{exc}")
+        await _safe_voice_failure(update, wait_message, f"Не смог распознать голосовое.\n\n{exc}")
         return
     except Exception:
         log.exception("Voice processing failed")
-        await wait_message.edit_text("Не смог обработать голосовое. Попробуй текстом.")
+        await _safe_voice_failure(update, wait_message, "Не смог обработать голосовое. Попробуй текстом.")
         return
-    await wait_message.edit_text(f"Распознал: {transcript}\n\nРазбираю...")
-    await _preview_from_text(update, context, transcript, source_kind="voice")
+    log.info("Voice transcribed elapsed=%.2fs transcript=%r", perf_counter() - started, _short_log_text(transcript))
+    await _safe_edit_message(wait_message, f"Распознал: {_short_log_text(transcript, 700)}\n\nРазбираю...")
+    try:
+        await _preview_from_text(update, context, transcript, source_kind="voice")
+    except Exception:
+        log.exception("Voice preview failed after transcription")
+        await _safe_edit_message(wait_message, "Распознал голосовое, но не смог отправить результат в Telegram.")
+        return
+    await _safe_delete_message(wait_message)
     log.info("Voice processed elapsed=%.2fs", perf_counter() - started)
+
+
+async def _safe_voice_failure(update: Update, wait_message: Message | None, text: str) -> None:
+    if wait_message:
+        await _safe_edit_message(wait_message, text)
+    elif update.message:
+        await _safe_reply_text(update.message, text)
 
 
 def _voice_audio_path(services: AppServices, file_id: str) -> Path:
@@ -261,6 +304,12 @@ def _voice_audio_path(services: AppServices, file_id: str) -> Path:
     safe = "".join(ch if ch.isalnum() else "-" for ch in file_id)[:16] or "voice"
     stamp = local_now(services.settings.timezone).strftime("%Y%m%d-%H%M%S")
     return services.settings.voice_dir / f"{stamp}-{safe}.oga"
+
+
+def _safe_file_id(file_id: str) -> str:
+    if len(file_id) <= 10:
+        return file_id
+    return f"{file_id[:6]}...{file_id[-4:]}"
 
 
 async def _preview_from_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, *, source_kind: str) -> None:

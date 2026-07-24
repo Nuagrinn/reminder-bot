@@ -186,6 +186,28 @@ Date: 2026-07-24
   - fake parse preview for `надо завтра пополнить карту наличкой`;
   - live Claude parse preview for `25 июля в 15:30 оплатить счет`.
 
+## Safe Delete Scopes
+
+- Changed due notification `Удалить` action:
+  - one-off event -> delete immediately;
+  - recurring event -> show scope menu.
+- Added recurring delete scopes:
+  - `Только этот раз`;
+  - `С этого раза и дальше`;
+  - `Всю серию`;
+  - `Отмена`.
+- Added `EventService.cancel_occurrence`.
+- Added `EventService.cancel_series_from_occurrence`.
+- `cancel_series_from_occurrence` writes `recurrence.until` as the day before
+  the selected occurrence and cancels selected/future materialized occurrences.
+- Recurrence engine now respects `until`.
+- Materialization skips occurrences that were already cancelled.
+- Added tests for:
+  - skipping one occurrence;
+  - stopping a recurring series from one occurrence;
+  - recurrence `until`;
+  - Telegram delete-scope keyboards.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

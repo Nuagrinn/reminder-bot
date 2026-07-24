@@ -47,7 +47,10 @@ Telegram text/voice
   - done;
   - snooze 1 hour;
   - snooze tomorrow;
-  - delete event.
+  - delete one-off event;
+  - skip one recurring occurrence;
+  - stop recurring series from selected occurrence;
+  - delete entire recurring series.
 
 ## Package layout
 
@@ -108,6 +111,19 @@ category:
 - `annual_date`: yearly date such as birthdays.
 
 Explicit offsets from the user override temporal-profile defaults.
+
+## Deletion Model
+
+One-off deletion cancels the whole event and its pending notification jobs.
+
+Recurring deletion is scoped:
+
+- `Только этот раз`: marks the selected occurrence as `cancelled` and cancels
+  its pending jobs. Future occurrences continue.
+- `С этого раза и дальше`: sets recurrence `until` to the day before the
+  selected occurrence, cancels selected/future materialized occurrences and
+  their pending jobs.
+- `Всю серию`: marks the event as `cancelled` and cancels all pending jobs.
 
 ## Assistant Toolkit usage
 

@@ -25,21 +25,31 @@ from assistant_toolkit.telegram import split_message
 from app.adapters.telegram.formatters import (
     format_done,
     format_daily_agenda,
+    format_delete_cancelled,
+    format_delete_scope_question,
     format_due_notification,
     format_event_deleted,
     format_intake_result,
     format_occurrence_list,
+    format_occurrence_deleted,
     format_parse_confirmation,
+    format_series_deleted,
+    format_series_stopped,
     format_snoozed,
     format_start,
 )
 from app.adapters.telegram.keyboards import (
     CANCEL_EVENT_PREFIX,
     CONFIRM_REMINDER_PREFIX,
+    DELETE_CANCEL_PREFIX,
+    DELETE_MENU_PREFIX,
+    DELETE_OCCURRENCE_PREFIX,
+    DELETE_SERIES_FROM_PREFIX,
     DISCARD_REMINDER_PREFIX,
     DONE_PREFIX,
     SNOOZE_PREFIX,
     confirmation_keyboard,
+    delete_scope_keyboard,
     due_keyboard,
     main_keyboard,
 )
@@ -377,7 +387,65 @@ async def cancel_event_callback(update: Update, context: ContextTypes.DEFAULT_TY
     now = local_now(services.settings.timezone)
     await asyncio.to_thread(services.events.cancel_event, event_id, now=now)
     await query.answer("Удалено")
-    await query.edit_message_text(format_event_deleted())
+    await query.edit_message_text(format_series_deleted())
+
+
+async def delete_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(DELETE_MENU_PREFIX)
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        event = await asyncio.to_thread(services.events.get_event_for_occurrence, occurrence_id)
+    except Exception:
+        log.exception("Delete menu failed")
+        await query.answer("Не нашел событие", show_alert=True)
+        return
+    if not services.events.is_recurring(event):
+        await asyncio.to_thread(services.events.cancel_event, event.id, now=now)
+        await query.answer("Удалено")
+        await query.edit_message_text(format_event_deleted())
+        return
+    await query.answer("Выбери вариант")
+    await query.edit_message_text(
+        format_delete_scope_question(event.title),
+        parse_mode=ParseMode.HTML,
+        reply_markup=delete_scope_keyboard(occurrence_id=occurrence_id, event_id=event.id),
+    )
+
+
+async def delete_occurrence_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(DELETE_OCCURRENCE_PREFIX)
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    await asyncio.to_thread(services.events.cancel_occurrence, occurrence_id, now=now)
+    await query.answer("Пропущено")
+    await query.edit_message_text(format_occurrence_deleted())
+
+
+async def delete_series_from_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(DELETE_SERIES_FROM_PREFIX)
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    await asyncio.to_thread(services.events.cancel_series_from_occurrence, occurrence_id, now=now)
+    await query.answer("Остановлено")
+    await query.edit_message_text(format_series_stopped())
+
+
+async def delete_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    await query.answer("Отмена")
+    await query.edit_message_text(format_delete_cancelled())
 
 
 async def confirm_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -450,6 +518,10 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(delete_menu_callback, pattern=f"^{DELETE_MENU_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(delete_occurrence_callback, pattern=f"^{DELETE_OCCURRENCE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(delete_series_from_callback, pattern=f"^{DELETE_SERIES_FROM_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(delete_cancel_callback, pattern=f"^{DELETE_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(cancel_event_callback, pattern=f"^{CANCEL_EVENT_PREFIX}"))
     app.add_handler(MessageHandler(filters.VOICE, voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))

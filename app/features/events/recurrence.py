@@ -26,6 +26,9 @@ def occurrence_datetimes(
     frequency = str(recurrence.get("frequency") or "none")
     interval = max(1, int(recurrence.get("interval") or 1))
     horizon_date = now.date() + timedelta(days=horizon_days)
+    until = _parse_until_date(recurrence.get("until"))
+    if until:
+        horizon_date = min(horizon_date, until)
 
     if frequency == "none":
         if not start_date:
@@ -41,6 +44,16 @@ def occurrence_datetimes(
         interval=interval,
     )
     return [datetime.combine(item, event_time) for item in dates]
+
+
+def _parse_until_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
 
 
 def _recurring_dates(

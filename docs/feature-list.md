@@ -42,6 +42,14 @@ Date: 2026-07-24
      - `DAILY_AGENDA_LIMIT=50`.
    - Uses the same formatter as `/today`, but with a short morning title.
 
+5. Safe deletion scopes - done
+   - One-off reminders delete directly.
+   - Recurring reminders open a scope menu:
+     - only this occurrence;
+     - this occurrence and future occurrences;
+     - whole series.
+   - `recurrence.until` is respected by the recurrence engine.
+
 ## Recommended Next Order
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
@@ -49,6 +57,8 @@ Date: 2026-07-24
 2. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
 3. Add clarification buttons for missing date/time.
+4. Add event detail/actions from `/today`, `/week`, `/month`, not only from due
+   reminders.
 
 ## P1 - Near Next
 

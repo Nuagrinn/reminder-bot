@@ -92,6 +92,40 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(upcoming[0].occurs_at.date().isoformat(), "2026-07-28")
         self.assertEqual(upcoming[1].occurs_at.date().isoformat(), "2026-08-04")
 
+    def test_cancel_occurrence_skips_only_one_recurring_item(self) -> None:
+        self._create("каждый вторник обновлять отчет по калориям")
+        first = self.service.upcoming(now=self.now, limit=3)[0]
+
+        self.service.cancel_occurrence(first.occurrence_id, now=self.now)
+        self.service.materialize_event(first.event_id, now=self.now)
+        upcoming = self.service.upcoming(now=self.now, limit=3)
+        with self.db.session() as conn:
+            row = conn.execute("SELECT status FROM event_occurrences WHERE id = ?", (first.occurrence_id,)).fetchone()
+            pending_jobs = conn.execute(
+                "SELECT COUNT(*) AS count FROM notification_jobs WHERE occurrence_id = ? AND status = 'pending'",
+                (first.occurrence_id,),
+            ).fetchone()["count"]
+
+        self.assertEqual(row["status"], "cancelled")
+        self.assertEqual(pending_jobs, 0)
+        self.assertEqual(upcoming[0].occurs_at.date().isoformat(), "2026-08-04")
+
+    def test_cancel_series_from_occurrence_keeps_previous_and_stops_future(self) -> None:
+        self._create("каждый вторник обновлять отчет по калориям")
+        first, second, third = self.service.upcoming(now=self.now, limit=3)
+
+        self.service.cancel_series_from_occurrence(second.occurrence_id, now=self.now)
+        upcoming = self.service.upcoming(now=self.now, limit=5)
+        event = self.service.get_event(first.event_id)
+        with self.db.session() as conn:
+            second_row = conn.execute("SELECT status FROM event_occurrences WHERE id = ?", (second.occurrence_id,)).fetchone()
+            third_row = conn.execute("SELECT status FROM event_occurrences WHERE id = ?", (third.occurrence_id,)).fetchone()
+
+        self.assertEqual([item.occurs_at.date().isoformat() for item in upcoming], ["2026-07-28"])
+        self.assertEqual(event.recurrence["until"], "2026-08-03")
+        self.assertEqual(second_row["status"], "cancelled")
+        self.assertEqual(third_row["status"], "cancelled")
+
     def test_every_two_days_materializes_interval(self) -> None:
         self._create("каждые два дня проверять почту")
         upcoming = self.service.upcoming(now=self.now, limit=3)

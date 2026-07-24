@@ -101,6 +101,30 @@ def format_event_deleted() -> str:
     return "Напоминание удалено."
 
 
+def format_delete_scope_question(title: str) -> str:
+    return (
+        "<b>Это повторяющееся напоминание</b>\n\n"
+        f"<b>{h(title)}</b>\n\n"
+        "Что удалить?"
+    )
+
+
+def format_occurrence_deleted() -> str:
+    return "Ок, пропустил только этот раз."
+
+
+def format_series_stopped() -> str:
+    return "Ок, остановил серию с этого раза."
+
+
+def format_series_deleted() -> str:
+    return "Ок, удалил всю серию."
+
+
+def format_delete_cancelled() -> str:
+    return "Ок, не удаляю."
+
+
 def format_done() -> str:
     return "Готово, отметил."
 

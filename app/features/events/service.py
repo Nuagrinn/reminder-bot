@@ -134,6 +134,24 @@ class EventService:
             raise ValueError(f"Event not found: {event_id}")
         return event_from_row(row)
 
+    def get_event_for_occurrence(self, occurrence_id: str) -> Event:
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT e.*
+                FROM events e
+                JOIN event_occurrences eo ON eo.event_id = e.id
+                WHERE eo.id = ?
+                """,
+                (occurrence_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError(f"Occurrence not found: {occurrence_id}")
+        return event_from_row(row)
+
+    def is_recurring(self, event: Event) -> bool:
+        return _is_recurring(event.recurrence)
+
     def materialize_event(self, event_id: str, *, now: datetime) -> None:
         event = self.get_event(event_id)
         if event.status != ACTIVE:
@@ -179,10 +197,10 @@ class EventService:
                     ),
                 )
                 row = conn.execute(
-                    "SELECT id FROM event_occurrences WHERE event_id = ? AND occurs_at = ?",
+                    "SELECT id, status FROM event_occurrences WHERE event_id = ? AND occurs_at = ?",
                     (event_id, iso(occurs_at)),
                 ).fetchone()
-                if not row:
+                if not row or row["status"] != SCHEDULED:
                     continue
                 occurrence_id = row["id"]
                 for rule in rules:
@@ -382,6 +400,90 @@ class EventService:
                 (iso(now), event_id),
             )
 
+    def cancel_occurrence(self, occurrence_id: str, *, now: datetime) -> None:
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT eo.id, eo.event_id, e.recurrence_json
+                FROM event_occurrences eo
+                JOIN events e ON e.id = eo.event_id
+                WHERE eo.id = ?
+                """,
+                (occurrence_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError(f"Occurrence not found: {occurrence_id}")
+            conn.execute(
+                "UPDATE event_occurrences SET status = 'cancelled' WHERE id = ?",
+                (occurrence_id,),
+            )
+            conn.execute(
+                """
+                UPDATE notification_jobs
+                SET status = 'cancelled', updated_at = ?
+                WHERE occurrence_id = ? AND status = 'pending'
+                """,
+                (iso(now), occurrence_id),
+            )
+            if not _is_recurring(json.loads(row["recurrence_json"] or "{}")):
+                conn.execute(
+                    "UPDATE events SET status = 'cancelled', updated_at = ? WHERE id = ?",
+                    (iso(now), row["event_id"]),
+                )
+
+    def cancel_series_from_occurrence(self, occurrence_id: str, *, now: datetime) -> None:
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT eo.event_id, eo.occurs_at, eo.occurrence_date, e.recurrence_json
+                FROM event_occurrences eo
+                JOIN events e ON e.id = eo.event_id
+                WHERE eo.id = ?
+                """,
+                (occurrence_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError(f"Occurrence not found: {occurrence_id}")
+            recurrence = json.loads(row["recurrence_json"] or "{}")
+            if not _is_recurring(recurrence):
+                conn.execute(
+                    "UPDATE events SET status = 'cancelled', updated_at = ? WHERE id = ?",
+                    (iso(now), row["event_id"]),
+                )
+            else:
+                stop_before = parse_date(row["occurrence_date"]) - timedelta(days=1)
+                recurrence["until"] = stop_before.isoformat()
+                conn.execute(
+                    "UPDATE events SET recurrence_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(recurrence, ensure_ascii=False), iso(now), row["event_id"]),
+                )
+            conn.execute(
+                """
+                UPDATE event_occurrences
+                SET status = 'cancelled'
+                WHERE event_id = ?
+                  AND status = ?
+                  AND occurs_at >= ?
+                """,
+                (row["event_id"], SCHEDULED, row["occurs_at"]),
+            )
+            conn.execute(
+                """
+                UPDATE notification_jobs
+                SET status = 'cancelled', updated_at = ?
+                WHERE event_id = ?
+                  AND status = 'pending'
+                  AND occurrence_id IN (
+                      SELECT id
+                      FROM event_occurrences
+                      WHERE event_id = ?
+                        AND occurs_at >= ?
+                  )
+                """,
+                (iso(now), row["event_id"], row["event_id"], row["occurs_at"]),
+            )
+
+
 def _event_time(event: Event, default_hhmm: tuple[int, int]):
     if event.event_time:
         return parse_time(event.event_time, default=default_hhmm)
@@ -410,6 +512,10 @@ def _normalize_recurrence(value: dict[str, Any]) -> dict[str, Any]:
         "count": value.get("count"),
         "rrule": _clean(value.get("rrule")),
     }
+
+
+def _is_recurring(recurrence: dict[str, Any]) -> bool:
+    return (_clean(recurrence.get("frequency")) or "none") != "none"
 
 
 def _parse_datetime_or_none(value: Any) -> datetime | None:

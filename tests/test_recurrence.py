@@ -26,3 +26,21 @@ class RecurrenceTest(TestCase):
             "2026-08-24",
         ])
 
+    def test_until_limits_recurring_dates(self) -> None:
+        dates = occurrence_datetimes(
+            recurrence={
+                "frequency": "weekly",
+                "interval": 1,
+                "weekdays": ["MO"],
+                "until": "2026-08-09",
+            },
+            start_date=None,
+            event_time=time(9, 0),
+            now=datetime(2026, 7, 24, 12, 0),
+            horizon_days=40,
+        )
+
+        self.assertEqual([item.date().isoformat() for item in dates], [
+            "2026-07-27",
+            "2026-08-03",
+        ])

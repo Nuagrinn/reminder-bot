@@ -577,7 +577,7 @@ def run_bot() -> None:
     services = AppServices(settings)
     app = build_application(settings, services)
     log.info("Starting reminder bot polling")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, bootstrap_retries=5)
 
 
 def main() -> None:

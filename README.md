@@ -48,6 +48,57 @@ STT_PROVIDER=disabled
 .venv\Scripts\python.exe -m app.telegram_bot
 ```
 
+## Локальный голос через whisper.cpp
+
+Голосовой контур использует общий `assistant-toolkit`, как и LearnKeeper. На
+локальной машине можно не скачивать модель второй раз, а указать пути на уже
+подготовленный `whisper.cpp` из LearnKeeper:
+
+```env
+STT_PROVIDER=whisper_cpp
+STT_WHISPER_CPP_BIN=C:\Users\Vladislav\Desktop\ТГ Бот\learnkeeper-bot\tools\whisper.cpp\bin\Release\whisper-cli.exe
+STT_WHISPER_CPP_MODEL=C:\Users\Vladislav\Desktop\ТГ Бот\learnkeeper-bot\tools\whisper.cpp\models\ggml-medium.bin
+FFMPEG_BIN=ffmpeg
+```
+
+Проверить, что пути доступны:
+
+```powershell
+.venv\Scripts\python.exe -m app.cli stt-check
+```
+
+Проверить расшифровку конкретного аудио:
+
+```powershell
+.venv\Scripts\python.exe -m app.cli stt-preview path\to\voice.oga
+```
+
+## VPS и общая модель
+
+На VPS модель не должна лежать внутри каждого бота. Общая схема:
+
+```text
+/opt/assistant-shared/whisper.cpp/bin/whisper-cli
+/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin
+```
+
+Оба бота указывают эти же пути в своих `.env`:
+
+```env
+STT_PROVIDER=whisper_cpp
+STT_WHISPER_CPP_BIN=/opt/assistant-shared/whisper.cpp/bin/whisper-cli
+STT_WHISPER_CPP_MODEL=/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin
+```
+
+Для подготовки общего `whisper.cpp` есть скрипт:
+
+```bash
+bash scripts/setup-shared-whisper-cpp-linux.sh medium
+```
+
+Пример VPS-окружения лежит в `deploy/env.vps.example`, systemd-сервис - в
+`deploy/systemd/reminder-bot.service`.
+
 ## Telegram UX
 
 - Свободный текст от владельца воспринимается как команда на создание

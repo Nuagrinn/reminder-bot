@@ -64,10 +64,26 @@ Date: 2026-07-24
 - Generated local `.env` from that file without printing token values.
 - `TELEGRAM_OWNER_ID` is now the primary owner variable. `TG_USER_ID` remains a
   fallback for compatibility.
-- Current `TELEGRAM_BOT_TOKEN` is present but Telegram API returns
-  `InvalidToken`; refresh the token in BotFather before live polling.
+- Telegram token was refreshed and verified through Telegram API:
+  `@ReminderForKeller_bot` is reachable.
 - Claude CLI is installed, but real Claude parsing needs `CLAUDE_CODE_OAUTH_TOKEN`
   or explicit `ALLOW_PAID_API=true`.
+
+## Shared Local STT Plan
+
+- Voice STT should use local `whisper.cpp`, same as LearnKeeper.
+- The local reminder `.env` points to LearnKeeper's existing `whisper-cli.exe`
+  and `ggml-medium.bin`, so the model is not duplicated.
+- VPS target layout:
+  - `/opt/assistant-shared/whisper.cpp/bin/whisper-cli`;
+  - `/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin`.
+- Added `scripts/setup-shared-whisper-cpp-linux.sh` to prepare that shared
+  directory once.
+- Added `deploy/env.vps.example` with shared STT paths and
+  `deploy/systemd/reminder-bot.service`.
+- Added CLI checks:
+  - `python -m app.cli stt-check`;
+  - `python -m app.cli stt-preview path/to/audio.oga`.
 
 ## Notes
 

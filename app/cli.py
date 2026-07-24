@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
+
+from assistant_toolkit.speech import SpeechToTextError, build_speech_to_text
 
 from app.config import load_settings
 from app.core.db import build_database
@@ -74,6 +80,56 @@ def cmd_due(args) -> None:
         print(f"{item.notify_at:%Y-%m-%d %H:%M}\t{item.title}\t{item.job_id}")
 
 
+def _tool_exists(value: str) -> bool:
+    if not value:
+        return False
+    path = Path(value)
+    if path.is_absolute() or any(sep in value for sep in ("/", "\\")):
+        return path.exists()
+    return shutil.which(value) is not None
+
+
+def cmd_stt_check(args) -> None:
+    settings = load_settings()
+    if args.provider:
+        settings = replace(settings, stt_provider=args.provider)
+
+    print(f"STT provider: {settings.stt_provider}")
+    print(f"- ffmpeg: {'OK' if _tool_exists(settings.ffmpeg_bin) else 'not found'} ({settings.ffmpeg_bin})")
+    if settings.stt_provider == "whisper_cpp":
+        print(
+            "- whisper.cpp bin: "
+            f"{'OK' if _tool_exists(settings.stt_whisper_cpp_bin) else 'not found'} "
+            f"({settings.stt_whisper_cpp_bin})"
+        )
+        print(
+            "- whisper.cpp model: "
+            f"{'OK' if settings.stt_whisper_cpp_model.exists() else 'not found'} "
+            f"({settings.stt_whisper_cpp_model})"
+        )
+    elif settings.stt_provider == "whisper_cli":
+        print(
+            "- whisper CLI: "
+            f"{'OK' if _tool_exists(settings.stt_whisper_bin) else 'not found'} "
+            f"({settings.stt_whisper_bin})"
+        )
+        print(f"- whisper model: {settings.stt_whisper_model or 'default'}")
+    elif settings.stt_provider == "openai":
+        print(f"- OPENAI_API_KEY: {'OK' if settings.openai_api_key else 'missing'}")
+
+
+def cmd_stt_preview(args) -> None:
+    if args.provider:
+        os.environ["STT_PROVIDER"] = args.provider
+    settings = load_settings()
+    audio_path = Path(args.audio)
+    try:
+        transcript = build_speech_to_text(settings).transcribe(audio_path)
+    except SpeechToTextError as exc:
+        raise SystemExit(f"STT failed: {exc}") from exc
+    print(transcript)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reminder-bot-cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -100,6 +156,23 @@ def build_parser() -> argparse.ArgumentParser:
     due = sub.add_parser("due")
     due.add_argument("--limit", type=int, default=20)
     due.set_defaults(func=cmd_due)
+
+    stt_check = sub.add_parser("stt-check")
+    stt_check.add_argument(
+        "--provider",
+        choices=["disabled", "whisper_cpp", "whisper_cli", "openai"],
+        help="Override STT_PROVIDER for this check",
+    )
+    stt_check.set_defaults(func=cmd_stt_check)
+
+    stt_preview = sub.add_parser("stt-preview")
+    stt_preview.add_argument("audio")
+    stt_preview.add_argument(
+        "--provider",
+        choices=["disabled", "whisper_cpp", "whisper_cli", "openai"],
+        help="Override STT_PROVIDER for this run",
+    )
+    stt_preview.set_defaults(func=cmd_stt_preview)
     return parser
 
 

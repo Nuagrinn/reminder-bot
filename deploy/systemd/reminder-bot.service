@@ -1,0 +1,16 @@
+[Unit]
+Description=Personal Telegram reminder bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=reminder-bot
+WorkingDirectory=/opt/reminder-bot
+EnvironmentFile=/opt/reminder-bot/.env
+ExecStart=/opt/reminder-bot/.venv/bin/python -m app.telegram_bot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

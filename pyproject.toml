@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reminder-bot"
+version = "0.1.0"
+description = "Personal Telegram reminder bot with voice/text intake and Claude parsing."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "assistant-toolkit @ git+https://github.com/Nuagrinn/assistant-toolkit.git@main",
+  "python-telegram-bot[job-queue]>=21.6,<23",
+  "openai>=1.0,<3",
+]
+
+[project.scripts]
+reminder-bot = "app.telegram_bot:main"
+reminder-bot-cli = "app.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+

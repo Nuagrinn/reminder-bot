@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timedelta
+
+from app.config import load_settings
+from app.core.db import build_database
+from app.core.time import local_now
+from app.features.reminder_intake.agent import ReminderParseRequest
+from app.services import AppServices
+
+
+def _request(settings, text: str, source_kind: str, now: datetime) -> ReminderParseRequest:
+    return ReminderParseRequest(
+        raw_text=text,
+        source_kind=source_kind,
+        now=now,
+        timezone=settings.timezone,
+        default_day_reminder_time=settings.default_day_reminder_time,
+        default_timed_event_offset_minutes=settings.default_timed_event_offset_minutes,
+        default_birthday_offsets_minutes=settings.default_birthday_offsets_minutes,
+    )
+
+
+def cmd_migrate(args) -> None:
+    settings = load_settings()
+    db = build_database(settings.db_path)
+    result = db.migrate()
+    print(json.dumps({"applied": result.applied, "skipped": result.skipped}, ensure_ascii=False))
+
+
+def cmd_parse_preview(args) -> None:
+    settings = load_settings()
+    services = AppServices(settings)
+    now = local_now(settings.timezone)
+    result = services.parser.parse(_request(settings, args.text, "text", now))
+    print(json.dumps(result.payload, ensure_ascii=False, indent=2))
+
+
+def cmd_add(args) -> None:
+    settings = load_settings()
+    services = AppServices(settings)
+    now = local_now(settings.timezone)
+    result = services.intake.ingest(_request(settings, args.text, "text", now))
+    print(json.dumps({"event_ids": result.event_ids, "payload": result.parse_result.payload}, ensure_ascii=False, indent=2))
+
+
+def cmd_today(args) -> None:
+    settings = load_settings()
+    services = AppServices(settings)
+    now = local_now(settings.timezone)
+    start_at = datetime.combine(now.date(), datetime.min.time())
+    end_at = start_at + timedelta(days=1)
+    for item in services.events.list_occurrences(start_at=start_at, end_at=end_at, limit=args.limit):
+        print(f"{item.occurs_at:%Y-%m-%d %H:%M}\t{item.title}\t{item.event_id}")
+
+
+def cmd_upcoming(args) -> None:
+    settings = load_settings()
+    services = AppServices(settings)
+    now = local_now(settings.timezone)
+    services.events.materialize_all(now=now)
+    for item in services.events.upcoming(now=now, limit=args.limit):
+        notify = item.next_notify_at.strftime("%Y-%m-%d %H:%M") if item.next_notify_at else "-"
+        print(f"{item.occurs_at:%Y-%m-%d %H:%M}\t{notify}\t{item.title}\t{item.event_id}")
+
+
+def cmd_due(args) -> None:
+    settings = load_settings()
+    services = AppServices(settings)
+    now = local_now(settings.timezone)
+    for item in services.events.due_jobs(now=now, limit=args.limit):
+        print(f"{item.notify_at:%Y-%m-%d %H:%M}\t{item.title}\t{item.job_id}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="reminder-bot-cli")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    migrate = sub.add_parser("migrate")
+    migrate.set_defaults(func=cmd_migrate)
+
+    preview = sub.add_parser("parse-preview")
+    preview.add_argument("text")
+    preview.set_defaults(func=cmd_parse_preview)
+
+    add = sub.add_parser("add")
+    add.add_argument("text")
+    add.set_defaults(func=cmd_add)
+
+    today = sub.add_parser("today")
+    today.add_argument("--limit", type=int, default=50)
+    today.set_defaults(func=cmd_today)
+
+    upcoming = sub.add_parser("upcoming")
+    upcoming.add_argument("--limit", type=int, default=20)
+    upcoming.set_defaults(func=cmd_upcoming)
+
+    due = sub.add_parser("due")
+    due.add_argument("--limit", type=int, default=20)
+    due.set_defaults(func=cmd_due)
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -19,6 +19,7 @@ from app.features.events.models import (
     occurrence_view_from_row,
 )
 from app.features.events.recurrence import occurrence_datetimes
+from app.features.events.reschedule import RescheduleTarget
 from app.features.notifications.policy import build_notification_rules
 
 
@@ -255,7 +256,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
-                    e.all_day,
+                    COALESCE(eo.all_day_override, e.all_day) AS all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
                 FROM event_occurrences eo
@@ -286,7 +287,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
-                    e.all_day,
+                    COALESCE(eo.all_day_override, e.all_day) AS all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
                 FROM event_occurrences eo
@@ -320,7 +321,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
-                    e.all_day
+                    COALESCE(eo.all_day_override, e.all_day) AS all_day
                 FROM notification_jobs nj
                 JOIN event_occurrences eo ON eo.id = nj.occurrence_id
                 JOIN events e ON e.id = nj.event_id
@@ -420,6 +421,130 @@ class EventService:
             )
         return new_job_id
 
+    def reschedule_occurrence(
+        self,
+        occurrence_id: str,
+        *,
+        target: RescheduleTarget,
+        now: datetime,
+    ) -> OccurrenceView:
+        _validate_reschedule_target(target, now=now)
+        with self.db.session() as conn:
+            row = _occurrence_event_row(conn, occurrence_id)
+            if not row:
+                raise ValueError(f"Occurrence not found: {occurrence_id}")
+            recurrence = json.loads(row["recurrence_json"] or "{}")
+            if _is_recurring(recurrence):
+                conn.execute(
+                    "UPDATE event_occurrences SET status = ? WHERE id = ?",
+                    ("cancelled", occurrence_id),
+                )
+                _cancel_pending_jobs_for_occurrence(conn, occurrence_id=occurrence_id, now=now)
+                new_occurrence_id = _ensure_occurrence(
+                    conn,
+                    event_id=row["event_id"],
+                    target=target,
+                    now=now,
+                    all_day_override=target.all_day,
+                )
+                _create_jobs_for_occurrence(
+                    conn,
+                    event_id=row["event_id"],
+                    occurrence_id=new_occurrence_id,
+                    occurs_at=target.occurs_at,
+                    now=now,
+                    default_hhmm=self.defaults.day_reminder_hhmm,
+                )
+            else:
+                new_occurrence_id = occurrence_id
+                _write_event_schedule(conn, event_id=row["event_id"], target=target, now=now)
+                _move_occurrence(conn, occurrence_id=occurrence_id, target=target)
+                _cancel_pending_jobs_for_occurrence(conn, occurrence_id=occurrence_id, now=now)
+                _maybe_rebuild_default_rules(
+                    conn,
+                    event_id=row["event_id"],
+                    event_type=row["event_type"],
+                    recurrence=recurrence,
+                    target=target,
+                    now=now,
+                    defaults=self.defaults,
+                )
+                _create_jobs_for_occurrence(
+                    conn,
+                    event_id=row["event_id"],
+                    occurrence_id=occurrence_id,
+                    occurs_at=target.occurs_at,
+                    now=now,
+                    default_hhmm=self.defaults.day_reminder_hhmm,
+                )
+        return self.get_occurrence(new_occurrence_id)
+
+    def reschedule_series_from_occurrence(
+        self,
+        occurrence_id: str,
+        *,
+        target: RescheduleTarget,
+        now: datetime,
+    ) -> OccurrenceView:
+        event = self.get_event_for_occurrence(occurrence_id)
+        if not self.is_recurring(event):
+            return self.reschedule_occurrence(occurrence_id, target=target, now=now)
+
+        _validate_reschedule_target(target, now=now)
+        with self.db.session() as conn:
+            row = _occurrence_event_row(conn, occurrence_id)
+            if not row:
+                raise ValueError(f"Occurrence not found: {occurrence_id}")
+            recurrence = _rescheduled_recurrence(json.loads(row["recurrence_json"] or "{}"), target=target)
+            _write_event_schedule(
+                conn,
+                event_id=row["event_id"],
+                target=target,
+                now=now,
+                recurrence=recurrence,
+            )
+            _cancel_scheduled_occurrences_from(
+                conn,
+                event_id=row["event_id"],
+                occurs_at=datetime.fromisoformat(row["occurs_at"]),
+                now=now,
+            )
+            _ensure_occurrence(
+                conn,
+                event_id=row["event_id"],
+                target=target,
+                now=now,
+                all_day_override=target.all_day,
+            )
+            _maybe_rebuild_default_rules(
+                conn,
+                event_id=row["event_id"],
+                event_type=row["event_type"],
+                recurrence=recurrence,
+                target=target,
+                now=now,
+                defaults=self.defaults,
+            )
+        self.materialize_event(event.id, now=now)
+        new_occurrence_id = self._occurrence_id_by_event_datetime(event.id, target.occurs_at)
+        return self.get_occurrence(new_occurrence_id)
+
+    def _occurrence_id_by_event_datetime(self, event_id: str, occurs_at: datetime) -> str:
+        with self.db.session() as conn:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM event_occurrences
+                WHERE event_id = ?
+                  AND occurs_at = ?
+                  AND status = ?
+                """,
+                (event_id, iso(occurs_at), SCHEDULED),
+            ).fetchone()
+        if not row:
+            raise ValueError(f"Occurrence not found after reschedule: {event_id} {iso(occurs_at)}")
+        return row["id"]
+
     def cancel_event(self, event_id: str, *, now: datetime) -> None:
         with self.db.session() as conn:
             conn.execute(
@@ -513,6 +638,334 @@ class EventService:
                 """,
                 (iso(now), row["event_id"], row["event_id"], row["occurs_at"]),
             )
+
+
+def _occurrence_event_row(conn, occurrence_id: str):
+    return conn.execute(
+        """
+        SELECT
+            eo.id AS occurrence_id,
+            eo.event_id,
+            eo.occurs_at,
+            eo.occurrence_date,
+            eo.status AS occurrence_status,
+            e.event_type,
+            e.recurrence_json
+        FROM event_occurrences eo
+        JOIN events e ON e.id = eo.event_id
+        WHERE eo.id = ?
+        """,
+        (occurrence_id,),
+    ).fetchone()
+
+
+def _validate_reschedule_target(target: RescheduleTarget, *, now: datetime) -> None:
+    if target.all_day:
+        if target.occurs_at.date() < now.date():
+            raise ValueError("Target date is in the past")
+        return
+    if target.occurs_at <= now.replace(second=0, microsecond=0):
+        raise ValueError("Target datetime is in the past")
+
+
+def _write_event_schedule(
+    conn,
+    *,
+    event_id: str,
+    target: RescheduleTarget,
+    now: datetime,
+    recurrence: dict[str, Any] | None = None,
+) -> None:
+    start_at = None if target.all_day else iso(target.occurs_at)
+    event_time = None if target.all_day else target.occurs_at.strftime("%H:%M")
+    if recurrence is None:
+        conn.execute(
+            """
+            UPDATE events
+            SET all_day = ?,
+                start_at = ?,
+                event_date = ?,
+                event_time = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                1 if target.all_day else 0,
+                start_at,
+                target.occurs_at.date().isoformat(),
+                event_time,
+                iso(now),
+                event_id,
+            ),
+        )
+        return
+    conn.execute(
+        """
+        UPDATE events
+        SET all_day = ?,
+            start_at = ?,
+            event_date = ?,
+            event_time = ?,
+            recurrence_json = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            1 if target.all_day else 0,
+            start_at,
+            target.occurs_at.date().isoformat(),
+            event_time,
+            json.dumps(recurrence, ensure_ascii=False),
+            iso(now),
+            event_id,
+        ),
+    )
+
+
+def _move_occurrence(conn, *, occurrence_id: str, target: RescheduleTarget) -> None:
+    conn.execute(
+        """
+        UPDATE event_occurrences
+        SET occurs_at = ?,
+            occurrence_date = ?,
+            status = ?,
+            all_day_override = NULL
+        WHERE id = ?
+        """,
+        (iso(target.occurs_at), target.occurs_at.date().isoformat(), SCHEDULED, occurrence_id),
+    )
+
+
+def _ensure_occurrence(
+    conn,
+    *,
+    event_id: str,
+    target: RescheduleTarget,
+    now: datetime,
+    all_day_override: bool,
+) -> str:
+    row = conn.execute(
+        """
+        SELECT id
+        FROM event_occurrences
+        WHERE event_id = ?
+          AND occurs_at = ?
+        """,
+        (event_id, iso(target.occurs_at)),
+    ).fetchone()
+    if row:
+        conn.execute(
+            """
+            UPDATE event_occurrences
+            SET occurrence_date = ?,
+                status = ?,
+                all_day_override = ?
+            WHERE id = ?
+            """,
+            (target.occurs_at.date().isoformat(), SCHEDULED, 1 if all_day_override else 0, row["id"]),
+        )
+        return row["id"]
+
+    occurrence_id = new_id("occ_")
+    conn.execute(
+        """
+        INSERT INTO event_occurrences (
+            id, event_id, occurs_at, occurrence_date, status, created_at,
+            all_day_override
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            occurrence_id,
+            event_id,
+            iso(target.occurs_at),
+            target.occurs_at.date().isoformat(),
+            SCHEDULED,
+            iso(now),
+            1 if all_day_override else 0,
+        ),
+    )
+    return occurrence_id
+
+
+def _cancel_pending_jobs_for_occurrence(conn, *, occurrence_id: str, now: datetime) -> None:
+    conn.execute(
+        """
+        UPDATE notification_jobs
+        SET status = 'cancelled', updated_at = ?
+        WHERE occurrence_id = ?
+          AND status = 'pending'
+        """,
+        (iso(now), occurrence_id),
+    )
+
+
+def _cancel_scheduled_occurrences_from(conn, *, event_id: str, occurs_at: datetime, now: datetime) -> None:
+    conn.execute(
+        """
+        UPDATE event_occurrences
+        SET status = 'cancelled'
+        WHERE event_id = ?
+          AND status = ?
+          AND occurs_at >= ?
+        """,
+        (event_id, SCHEDULED, iso(occurs_at)),
+    )
+    conn.execute(
+        """
+        UPDATE notification_jobs
+        SET status = 'cancelled', updated_at = ?
+        WHERE event_id = ?
+          AND status = 'pending'
+          AND occurrence_id IN (
+              SELECT id
+              FROM event_occurrences
+              WHERE event_id = ?
+                AND occurs_at >= ?
+          )
+        """,
+        (iso(now), event_id, event_id, iso(occurs_at)),
+    )
+
+
+def _create_jobs_for_occurrence(
+    conn,
+    *,
+    event_id: str,
+    occurrence_id: str,
+    occurs_at: datetime,
+    now: datetime,
+    default_hhmm: tuple[int, int],
+) -> None:
+    created = iso(now)
+    rules = [
+        notification_rule_from_row(row)
+        for row in conn.execute(
+            "SELECT * FROM notification_rules WHERE event_id = ? AND enabled = 1",
+            (event_id,),
+        ).fetchall()
+    ]
+    for rule in rules:
+        notify_at = _notification_datetime(occurs_at, rule, default_hhmm=default_hhmm)
+        if notify_at < now.replace(microsecond=0):
+            continue
+        conn.execute(
+            """
+            INSERT INTO notification_jobs (
+                id, event_id, occurrence_id, notification_rule_id, notify_at,
+                status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(occurrence_id, notification_rule_id, notify_at) DO NOTHING
+            """,
+            (
+                new_id("job_"),
+                event_id,
+                occurrence_id,
+                rule.id,
+                iso(notify_at),
+                PENDING,
+                created,
+                created,
+            ),
+        )
+
+
+def _maybe_rebuild_default_rules(
+    conn,
+    *,
+    event_id: str,
+    event_type: str,
+    recurrence: dict[str, Any],
+    target: RescheduleTarget,
+    now: datetime,
+    defaults: EventDefaults,
+) -> None:
+    explicit_count = conn.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM notification_rules
+        WHERE event_id = ?
+          AND enabled = 1
+          AND source = 'explicit'
+        """,
+        (event_id,),
+    ).fetchone()["count"]
+    if explicit_count:
+        return
+
+    conn.execute(
+        "UPDATE notification_rules SET enabled = 0 WHERE event_id = ? AND enabled = 1",
+        (event_id,),
+    )
+    for rule in build_notification_rules(
+        _policy_item(event_type=event_type, recurrence=recurrence, target=target),
+        now=now,
+        defaults=defaults,
+    ):
+        conn.execute(
+            """
+            INSERT INTO notification_rules (
+                id, event_id, kind, minutes_before, time_of_day, source,
+                enabled, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id("rule_"),
+                event_id,
+                rule.kind,
+                rule.minutes_before,
+                rule.time_of_day,
+                rule.source,
+                1,
+                iso(now),
+            ),
+        )
+
+
+def _policy_item(*, event_type: str, recurrence: dict[str, Any], target: RescheduleTarget) -> dict[str, Any]:
+    return {
+        "event_type": event_type,
+        "temporal_profile": _target_temporal_profile(event_type=event_type, recurrence=recurrence, target=target),
+        "schedule": {
+            "kind": "recurring" if _is_recurring(recurrence) else "once",
+            "all_day": target.all_day,
+            "start_at": None if target.all_day else iso(target.occurs_at),
+            "date": target.occurs_at.date().isoformat(),
+            "time": None if target.all_day else target.occurs_at.strftime("%H:%M"),
+            "recurrence": recurrence,
+        },
+        "notification_offsets": [],
+    }
+
+
+def _target_temporal_profile(*, event_type: str, recurrence: dict[str, Any], target: RescheduleTarget) -> str:
+    frequency = _clean(recurrence.get("frequency")) or "none"
+    if frequency == "yearly" or event_type in {"birthday", "anniversary"}:
+        return "annual_date"
+    if frequency != "none":
+        return "recurring_day_task" if target.all_day else "recurring_exact_time"
+    if event_type == "deadline":
+        return "deadline"
+    return "day_task" if target.all_day else "exact_time"
+
+
+def _rescheduled_recurrence(recurrence: dict[str, Any], *, target: RescheduleTarget) -> dict[str, Any]:
+    result = {**recurrence}
+    frequency = _clean(result.get("frequency")) or "none"
+    if frequency == "weekly":
+        result["weekdays"] = [_weekday_code(target.occurs_at)]
+    elif frequency == "monthly":
+        result["month_days"] = [target.occurs_at.day]
+    elif frequency == "yearly":
+        result["months"] = [target.occurs_at.month]
+        result["month_days"] = [target.occurs_at.day]
+    return result
+
+
+def _weekday_code(value: datetime) -> str:
+    return ("MO", "TU", "WE", "TH", "FR", "SA", "SU")[value.weekday()]
 
 
 def _event_time(event: Event, default_hhmm: tuple[int, int]):

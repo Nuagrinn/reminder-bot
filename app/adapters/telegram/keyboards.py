@@ -14,6 +14,11 @@ DELETE_MENU_PREFIX = "delete_menu:"
 DELETE_OCCURRENCE_PREFIX = "delete_occurrence:"
 DELETE_SERIES_FROM_PREFIX = "delete_series_from:"
 DELETE_CANCEL_PREFIX = "delete_cancel:"
+RESCHEDULE_MENU_PREFIX = "reschedule_menu:"
+RESCHEDULE_SCOPE_PREFIX = "reschedule_scope:"
+RESCHEDULE_QUICK_PREFIX = "reschedule_quick:"
+RESCHEDULE_CUSTOM_PREFIX = "reschedule_custom:"
+RESCHEDULE_CANCEL_PREFIX = "reschedule_cancel:"
 CONFIRM_REMINDER_PREFIX = "confirm_reminder:"
 DISCARD_REMINDER_PREFIX = "discard_reminder:"
 CLARIFY_PREFIX = "clarify:"
@@ -64,6 +69,7 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("Через 1 час", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:60"),
                 InlineKeyboardButton("Завтра", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:1440"),
             ],
+            [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{job.occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{job.occurrence_id}")],
         ]
     )
@@ -87,6 +93,7 @@ def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DETAIL_CANCEL_PREFIX}{occurrence_id}")],
         ]
@@ -100,6 +107,35 @@ def delete_scope_keyboard(*, occurrence_id: str, event_id: str) -> InlineKeyboar
             [InlineKeyboardButton("С этого раза и дальше", callback_data=f"{DELETE_SERIES_FROM_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Всю серию", callback_data=f"{CANCEL_EVENT_PREFIX}{event_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DELETE_CANCEL_PREFIX}{occurrence_id}")],
+        ]
+    )
+
+
+def reschedule_scope_keyboard(*, occurrence_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Только этот раз", callback_data=f"{RESCHEDULE_SCOPE_PREFIX}{occurrence_id}:occ")],
+            [InlineKeyboardButton("С этого раза и дальше", callback_data=f"{RESCHEDULE_SCOPE_PREFIX}{occurrence_id}:series")],
+            [InlineKeyboardButton("Отмена", callback_data=f"{RESCHEDULE_CANCEL_PREFIX}{occurrence_id}")],
+        ]
+    )
+
+
+def reschedule_options_keyboard(*, occurrence_id: str, scope: str) -> InlineKeyboardMarkup:
+    prefix = f"{occurrence_id}:{scope}:"
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("+1 час", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}plus_1h"),
+                InlineKeyboardButton("+3 часа", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}plus_3h"),
+            ],
+            [
+                InlineKeyboardButton("Вечером", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}evening"),
+                InlineKeyboardButton("Завтра", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}tomorrow"),
+            ],
+            [InlineKeyboardButton("Через неделю", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}next_week")],
+            [InlineKeyboardButton("Выбрать дату/время", callback_data=f"{RESCHEDULE_CUSTOM_PREFIX}{occurrence_id}:{scope}")],
+            [InlineKeyboardButton("Отмена", callback_data=f"{RESCHEDULE_CANCEL_PREFIX}{occurrence_id}")],
         ]
     )
 

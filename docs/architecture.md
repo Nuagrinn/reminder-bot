@@ -48,6 +48,9 @@ Telegram text/voice
   - done;
   - open occurrence detail from `/today`, `/week`, `/month`, `/upcoming` and
     daily agenda;
+  - reschedule one-off reminders;
+  - reschedule one recurring occurrence;
+  - reschedule a recurring series from the selected occurrence;
   - snooze 1 hour;
   - snooze tomorrow;
   - delete one-off event;
@@ -123,6 +126,7 @@ Occurrence lists render numbered rows and matching inline buttons. Selecting a
 row opens an occurrence detail card with:
 
 - `Готово`;
+- `Перенести`;
 - `Удалить`;
 - `Отмена`.
 
@@ -132,6 +136,35 @@ All-day tasks may be internally materialized at the default day anchor time
 (`09:00`) so recurrence and notification jobs have a concrete datetime. Telegram
 lists, detail cards and due notifications hide that internal anchor and display
 `день` or just the date instead.
+
+## Reschedule Model
+
+One-off reminders are moved by updating the event schedule, moving its only
+occurrence and rebuilding default notification rules when the user did not set
+explicit offsets.
+
+Recurring reminders are scoped:
+
+- `Только этот раз`: the selected occurrence is marked `cancelled`, a new
+  scheduled occurrence is created at the target date/time and pending jobs are
+  recreated for the new occurrence. The cancelled original occurrence prevents
+  future materialization from adding the old date back.
+- `С этого раза и дальше`: the event schedule and recurrence rule are updated,
+  selected/future materialized occurrences are cancelled, the target occurrence
+  is created and future occurrences are materialized from the updated rule.
+
+For recurrence rules, moving the series to another weekday/month day/yearly date
+updates the corresponding recurrence fields (`weekdays`, `month_days`,
+`months`). A concrete occurrence can override the event-level all-day flag, so a
+single all-day recurring item can be moved to an exact time without changing the
+whole series.
+
+Telegram reschedule UX:
+
+- detail/due card button `Перенести`;
+- recurring scope menu;
+- quick options: `+1 час`, `+3 часа`, `Вечером`, `Завтра`, `Через неделю`;
+- custom date/time entry after `Выбрать дату/время`.
 
 ## Clarification Flow
 

@@ -121,6 +121,58 @@ def format_delete_scope_question(title: str) -> str:
     )
 
 
+def format_reschedule_scope_question(title: str) -> str:
+    return (
+        "<b>Это повторяющееся напоминание</b>\n\n"
+        f"<b>{h(title)}</b>\n\n"
+        "Что перенести?"
+    )
+
+
+def format_reschedule_menu(item: OccurrenceView, *, scope: str) -> str:
+    scope_label = "серию с этого раза" if scope == "series" else "только этот раз"
+    return (
+        "<b>Перенести напоминание</b>\n\n"
+        f"<b>{h(item.title)}</b>\n"
+        f"Сейчас: <code>{_occurrence_when_label(item)}</code>\n"
+        f"Масштаб: <code>{scope_label}</code>\n\n"
+        "Выбери быстрый вариант или укажи дату/время текстом."
+    )
+
+
+def format_reschedule_custom_prompt(item: OccurrenceView, *, scope: str) -> str:
+    scope_label = "серию с этого раза" if scope == "series" else "только этот раз"
+    return (
+        "<b>Куда перенести?</b>\n\n"
+        f"<b>{h(item.title)}</b>\n"
+        f"Сейчас: <code>{_occurrence_when_label(item)}</code>\n"
+        f"Масштаб: <code>{scope_label}</code>\n\n"
+        "Пришли одним сообщением, например: "
+        "<code>завтра</code>, <code>в 18:30</code>, "
+        "<code>через 2 часа</code>, <code>в понедельник</code>."
+    )
+
+
+def format_rescheduled(item: OccurrenceView) -> str:
+    lines = [
+        "<b>Перенесено</b>",
+        "",
+        f"<b>{h(item.title)}</b>",
+        f"Теперь: <code>{_occurrence_when_label(item)}</code>",
+    ]
+    if item.next_notify_at:
+        lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
+    return "\n".join(lines)
+
+
+def format_reschedule_parse_failed(reason: str) -> str:
+    return (
+        "Не понял, куда перенести.\n\n"
+        f"{h(reason)}\n\n"
+        "Попробуй так: <code>завтра</code>, <code>в 18:30</code>, <code>через 2 часа</code>."
+    )
+
+
 def format_occurrence_deleted() -> str:
     return "Ок, пропустил только этот раз."
 

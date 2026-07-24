@@ -10,6 +10,8 @@ from app.adapters.telegram.formatters import (
     format_occurrence_detail,
     format_occurrence_list,
     format_parse_confirmation,
+    format_reschedule_menu,
+    format_rescheduled,
 )
 from app.adapters.telegram.keyboards import (
     CLARIFY_CANCEL_PREFIX,
@@ -21,6 +23,10 @@ from app.adapters.telegram.keyboards import (
     DETAIL_CANCEL_PREFIX,
     DONE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
+    RESCHEDULE_CUSTOM_PREFIX,
+    RESCHEDULE_MENU_PREFIX,
+    RESCHEDULE_QUICK_PREFIX,
+    RESCHEDULE_SCOPE_PREFIX,
     SNOOZE_PREFIX,
     clarification_keyboard,
     confirmation_keyboard,
@@ -29,6 +35,8 @@ from app.adapters.telegram.keyboards import (
     main_keyboard,
     occurrence_detail_keyboard,
     occurrence_list_keyboard,
+    reschedule_options_keyboard,
+    reschedule_scope_keyboard,
 )
 from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
@@ -106,7 +114,8 @@ class TelegramFormattersTest(TestCase):
         keyboard = due_keyboard(job)
 
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{SNOOZE_PREFIX}job_1:60")
-        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{RESCHEDULE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
 
     def test_delete_scope_keyboard_has_recurring_choices(self) -> None:
         keyboard = delete_scope_keyboard(occurrence_id="occ_1", event_id="evt_1")
@@ -143,8 +152,26 @@ class TelegramFormattersTest(TestCase):
         keyboard = occurrence_detail_keyboard("occ_1")
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{DONE_PREFIX}occ_1")
-        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
-        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{DETAIL_CANCEL_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{RESCHEDULE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DETAIL_CANCEL_PREFIX}occ_1")
+
+    def test_reschedule_keyboards_have_scope_and_quick_actions(self) -> None:
+        scope_keyboard = reschedule_scope_keyboard(occurrence_id="occ_1")
+        options_keyboard = reschedule_options_keyboard(occurrence_id="occ_1", scope="series")
+
+        self.assertEqual(scope_keyboard.inline_keyboard[0][0].callback_data, f"{RESCHEDULE_SCOPE_PREFIX}occ_1:occ")
+        self.assertEqual(options_keyboard.inline_keyboard[0][0].callback_data, f"{RESCHEDULE_QUICK_PREFIX}occ_1:series:plus_1h")
+        self.assertEqual(options_keyboard.inline_keyboard[3][0].callback_data, f"{RESCHEDULE_CUSTOM_PREFIX}occ_1:series")
+
+    def test_reschedule_texts_show_current_and_new_time(self) -> None:
+        menu = format_reschedule_menu(occurrence(), scope="occ")
+        done = format_rescheduled(occurrence())
+
+        self.assertIn("Перенести напоминание", menu)
+        self.assertIn("25.07.2026 09:00", menu)
+        self.assertIn("Перенесено", done)
+        self.assertIn("25.07.2026 09:00", done)
 
     def test_action_cancel_text_is_neutral(self) -> None:
         self.assertEqual(format_action_cancelled(), "Ок, ничего не меняю.")

@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.core.db import MIGRATIONS_DIR
+from app.features.events.reschedule import RescheduleTarget
 from app.features.events.service import EventDefaults, EventService
 from app.features.reminder_intake.agent import FakeReminderParserAgent
 from tests.test_fake_parser import request
@@ -107,6 +108,29 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(len(due_now), 0)
         self.assertEqual(len(due_later), 1)
 
+    def test_reschedule_one_off_rebuilds_default_jobs(self) -> None:
+        now = datetime(2026, 7, 24, 16, 42)
+        self._create_at("надо сегодня пополнить карту наличкой", now=now)
+        occurrence = self.service.list_occurrences(
+            start_at=datetime(2026, 7, 24, 0, 0),
+            end_at=datetime(2026, 7, 25, 0, 0),
+            limit=1,
+        )[0]
+
+        moved = self.service.reschedule_occurrence(
+            occurrence.occurrence_id,
+            target=RescheduleTarget(datetime(2026, 7, 25, 9, 0), all_day=True),
+            now=now,
+        )
+        due_day_before = self.service.due_jobs(now=datetime(2026, 7, 24, 20, 0), limit=10)
+        due_event_day = self.service.due_jobs(now=datetime(2026, 7, 25, 20, 0), limit=10)
+
+        self.assertTrue(moved.all_day)
+        self.assertEqual(moved.occurs_at, datetime(2026, 7, 25, 9, 0))
+        self.assertEqual(moved.next_notify_at, datetime(2026, 7, 24, 20, 0))
+        self.assertEqual(due_day_before[0].notify_at, datetime(2026, 7, 24, 20, 0))
+        self.assertIn(datetime(2026, 7, 25, 20, 0), [item.notify_at for item in due_event_day])
+
     def test_weekly_recurring_materializes_next_tuesdays(self) -> None:
         self._create("каждый вторник обновлять отчет по калориям")
         upcoming = self.service.upcoming(now=self.now, limit=3)
@@ -133,6 +157,25 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(pending_jobs, 0)
         self.assertEqual(upcoming[0].occurs_at.date().isoformat(), "2026-08-04")
 
+    def test_reschedule_recurring_occurrence_moves_only_one_item(self) -> None:
+        self._create("каждый вторник обновлять отчет по калориям")
+        first = self.service.upcoming(now=self.now, limit=3)[0]
+
+        moved = self.service.reschedule_occurrence(
+            first.occurrence_id,
+            target=RescheduleTarget(datetime(2026, 7, 29, 11, 0), all_day=False),
+            now=self.now,
+        )
+        self.service.materialize_event(first.event_id, now=self.now)
+        upcoming = self.service.upcoming(now=self.now, limit=3)
+        with self.db.session() as conn:
+            original = conn.execute("SELECT status FROM event_occurrences WHERE id = ?", (first.occurrence_id,)).fetchone()
+
+        self.assertEqual(original["status"], "cancelled")
+        self.assertFalse(moved.all_day)
+        self.assertEqual(moved.occurs_at, datetime(2026, 7, 29, 11, 0))
+        self.assertEqual([item.occurs_at.date().isoformat() for item in upcoming[:2]], ["2026-07-29", "2026-08-04"])
+
     def test_cancel_series_from_occurrence_keeps_previous_and_stops_future(self) -> None:
         self._create("каждый вторник обновлять отчет по калориям")
         first, second, third = self.service.upcoming(now=self.now, limit=3)
@@ -148,6 +191,22 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(event.recurrence["until"], "2026-08-03")
         self.assertEqual(second_row["status"], "cancelled")
         self.assertEqual(third_row["status"], "cancelled")
+
+    def test_reschedule_series_from_occurrence_changes_future_weekday(self) -> None:
+        self._create("каждый вторник обновлять отчет по калориям")
+        first = self.service.upcoming(now=self.now, limit=3)[0]
+
+        moved = self.service.reschedule_series_from_occurrence(
+            first.occurrence_id,
+            target=RescheduleTarget(datetime(2026, 7, 29, 9, 0), all_day=True),
+            now=self.now,
+        )
+        upcoming = self.service.upcoming(now=self.now, limit=3)
+        event = self.service.get_event(first.event_id)
+
+        self.assertTrue(moved.all_day)
+        self.assertEqual(event.recurrence["weekdays"], ["WE"])
+        self.assertEqual([item.occurs_at.date().isoformat() for item in upcoming[:2]], ["2026-07-29", "2026-08-05"])
 
     def test_every_two_days_materializes_interval(self) -> None:
         self._create("каждые два дня проверять почту")

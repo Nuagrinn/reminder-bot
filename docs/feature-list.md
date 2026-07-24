@@ -55,17 +55,37 @@ Date: 2026-07-24
 6. List detail/actions - done
    - `/today`, `/week`, `/month`, `/upcoming` render numbered action buttons.
    - Daily agenda also renders action buttons when there are items.
-   - Detail card supports `Готово`, `Удалить` and neutral `Отмена`.
+   - Detail card supports `Готово`, `Перенести`, `Удалить` and neutral
+     `Отмена`.
    - Delete from detail reuses recurring scope menu.
    - All-day tasks are shown as `день` / date-only instead of the internal
      `09:00` materialization anchor.
 
-7. Clarification diagnostics - done
+7. Reschedule reminders - done
+   - One-off reminders can be moved from the detail card.
+   - Recurring reminders can be moved as:
+     - only this occurrence;
+     - this occurrence and future occurrences.
+   - Quick options:
+     - `+1 час`;
+     - `+3 часа`;
+     - `Вечером`;
+     - `Завтра`;
+     - `Через неделю`.
+   - Custom date/time text after `Выбрать дату/время` supports phrases like:
+     - `завтра`;
+     - `в 18:30`;
+     - `через 2 часа`;
+     - `в понедельник`.
+   - Moving a one-off reminder rebuilds default notification timings, so a
+     same-day backoff task moved to tomorrow gets tomorrow-style reminders.
+
+8. Clarification diagnostics - done
    - `needs_clarification` parse results are logged at INFO level.
    - Logs include provider/model, prompt version, question, options and short
      raw text.
 
-8. Clarification buttons - done
+9. Clarification buttons - done
    - If date/time is missing, Telegram shows inline quick options.
    - Current options come from parser `clarification.options`; for generic time
      questions the fallback is `сегодня`, `завтра`, `через час`.

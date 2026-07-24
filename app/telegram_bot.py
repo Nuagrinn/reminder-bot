@@ -35,6 +35,11 @@ from app.adapters.telegram.formatters import (
     format_occurrence_list,
     format_occurrence_deleted,
     format_parse_confirmation,
+    format_reschedule_custom_prompt,
+    format_reschedule_menu,
+    format_reschedule_parse_failed,
+    format_reschedule_scope_question,
+    format_rescheduled,
     format_series_deleted,
     format_series_stopped,
     format_snoozed,
@@ -53,6 +58,11 @@ from app.adapters.telegram.keyboards import (
     DISCARD_REMINDER_PREFIX,
     DONE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
+    RESCHEDULE_CANCEL_PREFIX,
+    RESCHEDULE_CUSTOM_PREFIX,
+    RESCHEDULE_MENU_PREFIX,
+    RESCHEDULE_QUICK_PREFIX,
+    RESCHEDULE_SCOPE_PREFIX,
     SNOOZE_PREFIX,
     clarification_keyboard,
     confirmation_keyboard,
@@ -61,10 +71,13 @@ from app.adapters.telegram.keyboards import (
     main_keyboard,
     occurrence_detail_keyboard,
     occurrence_list_keyboard,
+    reschedule_options_keyboard,
+    reschedule_scope_keyboard,
 )
 from app.config import Settings, load_settings
 from app.core.ids import new_id
 from app.core.time import local_now
+from app.features.events.reschedule import RescheduleParseError, parse_reschedule_target, quick_reschedule_target
 from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.features.reminder_intake.clarification import clarification_options_from_payload
 from app.services import AppServices
@@ -72,12 +85,20 @@ from app.services import AppServices
 
 log = logging.getLogger(__name__)
 PENDING_TTL_MINUTES = 30
+PENDING_RESCHEDULE_TTL_MINUTES = 15
 
 
 @dataclass(frozen=True)
 class PendingReminder:
     request: ReminderParseRequest
     parse_result: ReminderParseResult
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class PendingReschedule:
+    occurrence_id: str
+    scope: str
     created_at: datetime
 
 
@@ -106,6 +127,26 @@ def _cleanup_pending(context: ContextTypes.DEFAULT_TYPE, *, now: datetime) -> No
     for pending_id, pending in list(store.items()):
         if pending.created_at < expired_at:
             store.pop(pending_id, None)
+    pending_reschedule = _pending_reschedule(context)
+    if pending_reschedule and pending_reschedule.created_at < now - timedelta(minutes=PENDING_RESCHEDULE_TTL_MINUTES):
+        _clear_pending_reschedule(context)
+
+
+def _pending_reschedule(context: ContextTypes.DEFAULT_TYPE) -> PendingReschedule | None:
+    return context.user_data.get("pending_reschedule")
+
+
+def _set_pending_reschedule(context: ContextTypes.DEFAULT_TYPE, pending: PendingReschedule) -> None:
+    context.user_data["pending_reschedule"] = pending
+
+
+def _clear_pending_reschedule(context: ContextTypes.DEFAULT_TYPE, *, occurrence_id: str | None = None) -> None:
+    pending = _pending_reschedule(context)
+    if not pending:
+        return
+    if occurrence_id and pending.occurrence_id != occurrence_id:
+        return
+    context.user_data.pop("pending_reschedule", None)
 
 
 async def _reject_non_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -258,6 +299,8 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = (update.message.text or "").strip() if update.message else ""
     if not text:
         return
+    if await _maybe_apply_pending_reschedule(update, context, text):
+        return
     if text in ("📆 Сегодня", "Сегодня"):
         await today(update, context)
         return
@@ -409,6 +452,108 @@ def _apply_clarification(raw_text: str, option: str) -> str:
     return f"{raw_text} {option}"
 
 
+async def _maybe_apply_pending_reschedule(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+) -> bool:
+    pending = _pending_reschedule(context)
+    if not pending:
+        return False
+
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    if pending.created_at < now - timedelta(minutes=PENDING_RESCHEDULE_TTL_MINUTES):
+        _clear_pending_reschedule(context)
+        await _answer_long(update, "Перенос устарел. Открой напоминание и нажми «Перенести» еще раз.")
+        return True
+
+    if text.casefold() in {"отмена", "cancel"}:
+        _clear_pending_reschedule(context)
+        await _answer_long(update, format_action_cancelled(), reply_markup=main_keyboard())
+        return True
+
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, pending.occurrence_id)
+    except Exception:
+        log.exception("Pending reschedule occurrence not found occurrence_id=%s", pending.occurrence_id)
+        _clear_pending_reschedule(context)
+        await _answer_long(update, "Не нашел это напоминание. Открой список заново.")
+        return True
+
+    try:
+        target = parse_reschedule_target(
+            text,
+            now=now,
+            current_occurs_at=occurrence.occurs_at,
+            default_day_hhmm=services.events.defaults.day_reminder_hhmm,
+            evening_hhmm=services.events.defaults.evening_reminder_hhmm,
+        )
+    except RescheduleParseError as exc:
+        await _answer_long(
+            update,
+            format_reschedule_parse_failed(str(exc)),
+            parse_mode=ParseMode.HTML,
+        )
+        return True
+
+    try:
+        new_occurrence = await _apply_reschedule(
+            services,
+            occurrence_id=pending.occurrence_id,
+            scope=pending.scope,
+            target=target,
+            now=now,
+        )
+    except Exception as exc:
+        log.exception(
+            "Pending reschedule failed occurrence_id=%s scope=%s",
+            pending.occurrence_id,
+            pending.scope,
+        )
+        await _answer_long(update, f"Не смог перенести.\n\n{exc}", reply_markup=main_keyboard())
+        return True
+
+    _clear_pending_reschedule(context)
+    log.info(
+        "Reminder rescheduled from text occurrence_id=%s new_occurrence_id=%s scope=%s raw=%r",
+        pending.occurrence_id,
+        new_occurrence.occurrence_id,
+        pending.scope,
+        _short_log_text(text),
+    )
+    await _answer_long(
+        update,
+        format_rescheduled(new_occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=occurrence_detail_keyboard(new_occurrence.occurrence_id),
+    )
+    return True
+
+
+async def _apply_reschedule(
+    services: AppServices,
+    *,
+    occurrence_id: str,
+    scope: str,
+    target,
+    now: datetime,
+):
+    if scope == "series":
+        return await asyncio.to_thread(
+            services.events.reschedule_series_from_occurrence,
+            occurrence_id,
+            target=target,
+            now=now,
+        )
+    return await asyncio.to_thread(
+        services.events.reschedule_occurrence,
+        occurrence_id,
+        target=target,
+        now=now,
+    )
+
+
 def _short_log_text(value: str, limit: int = 160) -> str:
     text = " ".join(value.split())
     if len(text) <= limit:
@@ -517,6 +662,150 @@ async def detail_cancel_callback(update: Update, context: ContextTypes.DEFAULT_T
     if await _reject_non_owner(update, context):
         return
     query = update.callback_query
+    await query.answer("Отмена")
+    await query.edit_message_text(format_action_cancelled())
+
+
+async def reschedule_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(RESCHEDULE_MENU_PREFIX)
+    services = _services(context)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+        event = await asyncio.to_thread(services.events.get_event_for_occurrence, occurrence_id)
+    except Exception:
+        log.exception("Reschedule menu failed occurrence_id=%s", occurrence_id)
+        await query.answer("Не нашел напоминание", show_alert=True)
+        return
+
+    if services.events.is_recurring(event):
+        await query.answer("Выбери масштаб")
+        await query.edit_message_text(
+            format_reschedule_scope_question(event.title),
+            parse_mode=ParseMode.HTML,
+            reply_markup=reschedule_scope_keyboard(occurrence_id=occurrence_id),
+        )
+        return
+
+    await query.answer("Куда перенести?")
+    await query.edit_message_text(
+        format_reschedule_menu(occurrence, scope="occ"),
+        parse_mode=ParseMode.HTML,
+        reply_markup=reschedule_options_keyboard(occurrence_id=occurrence_id, scope="occ"),
+    )
+
+
+async def reschedule_scope_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(RESCHEDULE_SCOPE_PREFIX)
+    try:
+        occurrence_id, scope = payload.rsplit(":", 1)
+    except ValueError:
+        await query.answer("Не понял вариант", show_alert=True)
+        return
+    services = _services(context)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+    except Exception:
+        log.exception("Reschedule scope failed occurrence_id=%s", occurrence_id)
+        await query.answer("Не нашел напоминание", show_alert=True)
+        return
+    await query.answer("Куда перенести?")
+    await query.edit_message_text(
+        format_reschedule_menu(occurrence, scope=scope),
+        parse_mode=ParseMode.HTML,
+        reply_markup=reschedule_options_keyboard(occurrence_id=occurrence_id, scope=scope),
+    )
+
+
+async def reschedule_quick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(RESCHEDULE_QUICK_PREFIX)
+    try:
+        occurrence_id, scope, action = payload.split(":", 2)
+    except ValueError:
+        await query.answer("Не понял вариант", show_alert=True)
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+        target = quick_reschedule_target(
+            action,
+            now=now,
+            current_occurs_at=occurrence.occurs_at,
+            current_all_day=occurrence.all_day,
+            default_day_hhmm=services.events.defaults.day_reminder_hhmm,
+            evening_hhmm=services.events.defaults.evening_reminder_hhmm,
+            relative_to_current=scope == "series",
+        )
+        new_occurrence = await _apply_reschedule(
+            services,
+            occurrence_id=occurrence_id,
+            scope=scope,
+            target=target,
+            now=now,
+        )
+    except Exception as exc:
+        log.exception("Quick reschedule failed occurrence_id=%s scope=%s action=%s", occurrence_id, scope, action)
+        await query.answer("Не перенес", show_alert=True)
+        await query.edit_message_text(f"Не смог перенести.\n\n{exc}")
+        return
+    _clear_pending_reschedule(context, occurrence_id=occurrence_id)
+    log.info(
+        "Reminder rescheduled quick occurrence_id=%s new_occurrence_id=%s scope=%s action=%s",
+        occurrence_id,
+        new_occurrence.occurrence_id,
+        scope,
+        action,
+    )
+    await query.answer("Перенесено")
+    await query.edit_message_text(
+        format_rescheduled(new_occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=occurrence_detail_keyboard(new_occurrence.occurrence_id),
+    )
+
+
+async def reschedule_custom_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(RESCHEDULE_CUSTOM_PREFIX)
+    try:
+        occurrence_id, scope = payload.rsplit(":", 1)
+    except ValueError:
+        await query.answer("Не понял вариант", show_alert=True)
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+    except Exception:
+        log.exception("Custom reschedule failed occurrence_id=%s", occurrence_id)
+        await query.answer("Не нашел напоминание", show_alert=True)
+        return
+    _set_pending_reschedule(context, PendingReschedule(occurrence_id=occurrence_id, scope=scope, created_at=now))
+    await query.answer("Жду дату/время")
+    await query.edit_message_text(
+        format_reschedule_custom_prompt(occurrence, scope=scope),
+        parse_mode=ParseMode.HTML,
+        reply_markup=reschedule_options_keyboard(occurrence_id=occurrence_id, scope=scope),
+    )
+
+
+async def reschedule_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(RESCHEDULE_CANCEL_PREFIX)
+    _clear_pending_reschedule(context, occurrence_id=occurrence_id)
     await query.answer("Отмена")
     await query.edit_message_text(format_action_cancelled())
 
@@ -753,6 +1042,11 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(clarify_cancel_callback, pattern=f"^{CLARIFY_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(detail_cancel_callback, pattern=f"^{DETAIL_CANCEL_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reschedule_menu_callback, pattern=f"^{RESCHEDULE_MENU_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reschedule_scope_callback, pattern=f"^{RESCHEDULE_SCOPE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reschedule_quick_callback, pattern=f"^{RESCHEDULE_QUICK_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reschedule_custom_callback, pattern=f"^{RESCHEDULE_CUSTOM_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reschedule_cancel_callback, pattern=f"^{RESCHEDULE_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(delete_menu_callback, pattern=f"^{DELETE_MENU_PREFIX}"))

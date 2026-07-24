@@ -326,6 +326,49 @@ Date: 2026-07-24
 - CLI `today` / `upcoming` also use a date-only `day` label for all-day
   occurrences.
 
+## Reschedule Actions
+
+- Added `Перенести` to occurrence detail cards and due notification cards.
+- One-off reminders can now be moved to a new date/time. When the reminder used
+  default notification rules, those rules are rebuilt for the new temporal
+  shape. Example: a same-day all-day task moved to tomorrow no longer keeps the
+  old same-day backoff slots.
+- Recurring reminders now open a reschedule scope menu:
+  - `Только этот раз`;
+  - `С этого раза и дальше`;
+  - `Отмена`.
+- Moving one recurring occurrence:
+  - marks the original occurrence as `cancelled`;
+  - creates a new scheduled occurrence at the target date/time;
+  - recreates pending notification jobs for the new occurrence;
+  - keeps the recurrence rule unchanged.
+- Moving a recurring series from the selected occurrence:
+  - updates the event schedule;
+  - updates recurrence fields for weekly/monthly/yearly moves;
+  - cancels selected/future materialized occurrences;
+  - materializes future occurrences from the updated rule.
+- Added occurrence-level `all_day_override` so a single all-day recurring
+  occurrence can be moved to an exact time without changing the whole series.
+- Added quick reschedule options:
+  - `+1 час`;
+  - `+3 часа`;
+  - `Вечером`;
+  - `Завтра`;
+  - `Через неделю`.
+- Added custom reschedule text flow after `Выбрать дату/время`.
+  Supported local parser examples:
+  - `завтра`;
+  - `в 18:30`;
+  - `через 2 часа`;
+  - `в понедельник`.
+- Added migration `002_occurrence_all_day_override.sql`.
+- Added tests for:
+  - one-off reschedule with default notification rebuild;
+  - single recurring occurrence move without old-date duplication;
+  - recurring series move with weekday update;
+  - reschedule parser;
+  - Telegram reschedule keyboards and formatters.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

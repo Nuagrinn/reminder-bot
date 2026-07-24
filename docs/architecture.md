@@ -56,6 +56,7 @@ Telegram text/voice
   - reschedule a recurring series from the selected occurrence;
   - snooze 1 hour;
   - snooze tomorrow;
+  - hide a sent due notification card without changing the reminder;
   - delete one-off event;
   - skip one recurring occurrence;
   - stop recurring series from selected occurrence;
@@ -146,6 +147,18 @@ lists, detail cards and due notifications hide that internal anchor and display
 `день` or just the date instead.
 
 Empty list states are explicit and short, for example `На сегодня событий нет`.
+
+## Due Notification Actions
+
+Due notification cards are action-oriented:
+
+- `Готово`: completes the occurrence.
+- `Через 1 час`: snoozes this notification job for one hour.
+- `Завтра`: snoozes this notification job for one day.
+- `Перенести`: opens the reschedule flow for the occurrence.
+- `Удалить`: opens immediate/scoped deletion depending on recurrence.
+- `Скрыть`: deletes only the Telegram card. The occurrence and stored reminder
+  state stay unchanged.
 
 ## Morning Agenda
 

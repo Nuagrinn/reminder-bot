@@ -404,6 +404,16 @@ Date: 2026-07-24
   - empty agenda state;
   - version update notification text.
 
+## Due Notification Hide Action
+
+- Added `Скрыть` button to due notification cards.
+- `Скрыть` deletes the Telegram card only:
+  - does not mark the occurrence done;
+  - does not delete the event;
+  - does not reschedule notification jobs.
+- Added callback logging for successful hide and Telegram delete/edit failures.
+- Added regression tests for the keyboard callback data and handler behavior.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

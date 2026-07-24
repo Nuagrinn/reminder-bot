@@ -25,6 +25,7 @@ from app.adapters.telegram.keyboards import (
     DELETE_SERIES_FROM_PREFIX,
     DETAIL_CANCEL_PREFIX,
     DONE_PREFIX,
+    HIDE_NOTIFICATION_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     RESCHEDULE_CUSTOM_PREFIX,
     RESCHEDULE_MENU_PREFIX,
@@ -120,6 +121,7 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{SNOOZE_PREFIX}job_1:60")
         self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{RESCHEDULE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[4][0].callback_data, f"{HIDE_NOTIFICATION_PREFIX}job_1")
 
     def test_delete_scope_keyboard_has_recurring_choices(self) -> None:
         keyboard = delete_scope_keyboard(occurrence_id="occ_1", event_id="evt_1")

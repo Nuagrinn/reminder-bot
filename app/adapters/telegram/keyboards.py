@@ -9,6 +9,7 @@ from app.features.events.models import OccurrenceView
 DONE_PREFIX = "done:"
 OCCURRENCE_DETAIL_PREFIX = "occ_detail:"
 SNOOZE_PREFIX = "snooze:"
+HIDE_NOTIFICATION_PREFIX = "hide_notification:"
 CANCEL_EVENT_PREFIX = "cancel_event:"
 DELETE_MENU_PREFIX = "delete_menu:"
 DELETE_OCCURRENCE_PREFIX = "delete_occurrence:"
@@ -73,6 +74,7 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{job.occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{job.occurrence_id}")],
+            [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_NOTIFICATION_PREFIX}{job.job_id}")],
         ]
     )
 

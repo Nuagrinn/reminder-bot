@@ -86,12 +86,17 @@ Date: 2026-07-24
    - Moving a one-off reminder rebuilds default notification timings, so a
      same-day backoff task moved to tomorrow gets tomorrow-style reminders.
 
-8. Clarification diagnostics - done
+8. Due notification hide action - done
+   - Due notification cards include `Скрыть`.
+   - The action deletes the Telegram notification card only.
+   - It does not mark the reminder done, delete it, or reschedule anything.
+
+9. Clarification diagnostics - done
    - `needs_clarification` parse results are logged at INFO level.
    - Logs include provider/model, prompt version, question, options and short
      raw text.
 
-9. Clarification buttons - done
+10. Clarification buttons - done
    - If date/time is missing, Telegram shows inline quick options.
    - Current options come from parser `clarification.options`; for generic time
      questions the fallback is `сегодня`, `завтра`, `через час`.
@@ -100,14 +105,14 @@ Date: 2026-07-24
    - If the resolved parse is OK, the bot shows the normal confirmation screen.
    - Clarification selections are logged at INFO level.
 
-10. Version activation notification - done
+11. Version activation notification - done
    - On startup, the bot checks the current git commit.
    - If the commit differs from `app_version_last_notified`, it sends the owner
      a short `Reminder Bot обновлен и перезапущен` message.
    - The last notified commit is stored in `app_settings`, so normal restarts of
      the same version do not spam.
 
-11. VPS deploy kit - MVP ready
+12. VPS deploy kit - MVP ready
    - `deploy/env.vps.example`;
    - hardened `deploy/systemd/reminder-bot.service`;
    - `scripts/setup-shared-whisper-cpp-linux.sh`;

@@ -62,6 +62,7 @@ from app.adapters.telegram.keyboards import (
     DELETE_SERIES_FROM_PREFIX,
     DISCARD_REMINDER_PREFIX,
     DONE_PREFIX,
+    HIDE_NOTIFICATION_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     RESCHEDULE_CANCEL_PREFIX,
     RESCHEDULE_CUSTOM_PREFIX,
@@ -735,6 +736,25 @@ async def done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.edit_message_text(format_done())
 
 
+async def hide_notification_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    job_id = (query.data or "").removeprefix(HIDE_NOTIFICATION_PREFIX)
+    await query.answer("Скрыто")
+    try:
+        if query.message:
+            await query.message.delete()
+            log.info("Notification card hidden job_id=%s", job_id)
+            return
+    except Exception:
+        log.warning("Failed to delete notification card job_id=%s", job_id, exc_info=True)
+    try:
+        await query.edit_message_text("Скрыто.")
+    except Exception:
+        log.warning("Failed to edit hidden notification card job_id=%s", job_id, exc_info=True)
+
+
 async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -1164,6 +1184,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(reschedule_custom_callback, pattern=f"^{RESCHEDULE_CUSTOM_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_cancel_callback, pattern=f"^{RESCHEDULE_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(done_callback, pattern=f"^{DONE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(hide_notification_callback, pattern=f"^{HIDE_NOTIFICATION_PREFIX}"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=f"^{SNOOZE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(delete_menu_callback, pattern=f"^{DELETE_MENU_PREFIX}"))
     app.add_handler(CallbackQueryHandler(delete_occurrence_callback, pattern=f"^{DELETE_OCCURRENCE_PREFIX}"))

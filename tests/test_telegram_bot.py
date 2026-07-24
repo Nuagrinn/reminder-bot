@@ -4,7 +4,8 @@ import logging
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
-from app.telegram_bot import _deliver_text, _format_version_update_text, configure_logging
+from app.adapters.telegram.keyboards import HIDE_NOTIFICATION_PREFIX
+from app.telegram_bot import _deliver_text, _format_version_update_text, configure_logging, hide_notification_callback
 
 
 class TelegramBotLoggingTest(TestCase):
@@ -55,11 +56,66 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
         self.assertFalse(delivered_via_edit)
         self.assertEqual(reply_message.replies[0][0], "Проверь напоминание")
 
+    async def test_hide_notification_callback_deletes_message(self) -> None:
+        message = FakeDeletableMessage()
+        query = FakeCallbackQuery(data=f"{HIDE_NOTIFICATION_PREFIX}job_1", message=message)
+        update = FakeCallbackUpdate(query=query, user_id=123)
+        context = FakeContext(owner_id=123)
+
+        await hide_notification_callback(update, context)
+
+        self.assertTrue(message.deleted)
+        self.assertEqual(query.answers, [("Скрыто", {})])
+
 
 class FakeUpdate:
     def __init__(self, *, message=None):
         self.message = message
         self.callback_query = None
+
+
+class FakeCallbackUpdate:
+    def __init__(self, *, query, user_id: int):
+        self.message = None
+        self.callback_query = query
+        self.effective_user = FakeUser(user_id)
+
+
+class FakeUser:
+    def __init__(self, user_id: int):
+        self.id = user_id
+
+
+class FakeContext:
+    def __init__(self, *, owner_id: int):
+        self.application = FakeApplication(owner_id=owner_id)
+
+
+class FakeApplication:
+    def __init__(self, *, owner_id: int):
+        self.bot_data = {"owner_id": owner_id}
+
+
+class FakeCallbackQuery:
+    def __init__(self, *, data: str, message):
+        self.data = data
+        self.message = message
+        self.answers = []
+
+    async def answer(self, text: str = "", **kwargs) -> None:
+        self.answers.append((text, kwargs))
+
+    async def edit_message_text(self, text: str, **kwargs) -> None:
+        self.message.edits.append((text, kwargs))
+
+
+class FakeDeletableMessage:
+    def __init__(self) -> None:
+        self.deleted = False
+        self.edits = []
+
+    async def delete(self) -> None:
+        self.deleted = True
 
 
 class FakeEditMessage:

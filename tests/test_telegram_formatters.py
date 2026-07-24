@@ -6,6 +6,8 @@ from unittest import TestCase
 from app.adapters.telegram.formatters import (
     format_action_cancelled,
     format_daily_agenda,
+    format_daily_agenda_settings,
+    format_daily_agenda_toggled,
     format_due_notification,
     format_occurrence_detail,
     format_occurrence_list,
@@ -17,6 +19,7 @@ from app.adapters.telegram.keyboards import (
     CLARIFY_CANCEL_PREFIX,
     CLARIFY_PREFIX,
     CONFIRM_REMINDER_PREFIX,
+    DAILY_AGENDA_TOGGLE_PREFIX,
     DELETE_MENU_PREFIX,
     DELETE_OCCURRENCE_PREFIX,
     DELETE_SERIES_FROM_PREFIX,
@@ -30,6 +33,7 @@ from app.adapters.telegram.keyboards import (
     SNOOZE_PREFIX,
     clarification_keyboard,
     confirmation_keyboard,
+    daily_agenda_settings_keyboard,
     delete_scope_keyboard,
     due_keyboard,
     main_keyboard,
@@ -129,6 +133,14 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn("🗓 Неделя", labels)
         self.assertIn("🗂 Месяц", labels)
+        self.assertIn("🌅 Утро", labels)
+
+    def test_daily_agenda_settings_keyboard_toggles_state(self) -> None:
+        enabled_keyboard = daily_agenda_settings_keyboard(enabled=True)
+        disabled_keyboard = daily_agenda_settings_keyboard(enabled=False)
+
+        self.assertEqual(enabled_keyboard.inline_keyboard[0][0].callback_data, f"{DAILY_AGENDA_TOGGLE_PREFIX}off")
+        self.assertEqual(disabled_keyboard.inline_keyboard[0][0].callback_data, f"{DAILY_AGENDA_TOGGLE_PREFIX}on")
 
     def test_occurrence_list_keyboard_uses_numbered_detail_buttons(self) -> None:
         item = occurrence()
@@ -216,6 +228,19 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn("План на сегодня", text)
         self.assertIn("Проверять почту", text)
+
+    def test_daily_agenda_empty_state_is_clear(self) -> None:
+        text = format_daily_agenda([])
+
+        self.assertIn("На сегодня событий нет", text)
+
+    def test_daily_agenda_settings_texts_show_status(self) -> None:
+        settings_text = format_daily_agenda_settings(enabled=True, time_label="07:00")
+        toggled_text = format_daily_agenda_toggled(enabled=False, time_label="07:00")
+
+        self.assertIn("включены", settings_text)
+        self.assertIn("07:00", settings_text)
+        self.assertIn("выключены", toggled_text)
 
 
 def occurrence() -> OccurrenceView:

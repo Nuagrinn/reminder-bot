@@ -97,7 +97,27 @@ def format_daily_agenda(items: list[OccurrenceView]) -> str:
     return format_occurrence_list(
         items,
         title="План на сегодня",
-        empty_text="Доброе утро. На сегодня ничего не запланировано.",
+        empty_text="Доброе утро. На сегодня событий нет.",
+    )
+
+
+def format_daily_agenda_settings(*, enabled: bool, time_label: str) -> str:
+    status = "включены" if enabled else "выключены"
+    return (
+        "<b>Утренний план</b>\n\n"
+        f"Ежедневные утренние уведомления сейчас <b>{status}</b>.\n"
+        f"Время отправки: <code>{h(time_label)}</code>.\n\n"
+        "Когда включено, бот каждое утро присылает список событий на сегодня. "
+        "Если событий нет, он тоже напишет об этом."
+    )
+
+
+def format_daily_agenda_toggled(*, enabled: bool, time_label: str) -> str:
+    status = "включены" if enabled else "выключены"
+    return (
+        "<b>Утренний план</b>\n\n"
+        f"Готово, ежедневные утренние уведомления <b>{status}</b>.\n"
+        f"Время отправки: <code>{h(time_label)}</code>."
     )
 
 

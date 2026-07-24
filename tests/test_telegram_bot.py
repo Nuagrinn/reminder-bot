@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import patch
 
-from app.telegram_bot import _deliver_text, configure_logging
+from app.telegram_bot import _deliver_text, _format_version_update_text, configure_logging
 
 
 class TelegramBotLoggingTest(TestCase):
@@ -12,6 +13,18 @@ class TelegramBotLoggingTest(TestCase):
 
         self.assertGreaterEqual(logging.getLogger("httpx").level, logging.WARNING)
         self.assertGreaterEqual(logging.getLogger("httpcore").level, logging.WARNING)
+
+    def test_version_update_text_contains_commit_context(self) -> None:
+        with (
+            patch("app.telegram_bot._current_version", return_value="abc123"),
+            patch("app.telegram_bot._current_version_subject", return_value="Add feature"),
+            patch("app.telegram_bot._current_version_date", return_value="2026-07-24 18:30:00 +0300"),
+        ):
+            text = _format_version_update_text()
+
+        self.assertIn("Reminder Bot обновлен", text)
+        self.assertIn("abc123", text)
+        self.assertIn("Add feature", text)
 
 
 class TelegramDeliveryTest(IsolatedAsyncioTestCase):

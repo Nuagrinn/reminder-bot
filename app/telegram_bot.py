@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -26,6 +28,8 @@ from app.adapters.telegram.formatters import (
     format_action_cancelled,
     format_done,
     format_daily_agenda,
+    format_daily_agenda_settings,
+    format_daily_agenda_toggled,
     format_delete_cancelled,
     format_delete_scope_question,
     format_due_notification,
@@ -50,6 +54,7 @@ from app.adapters.telegram.keyboards import (
     CLARIFY_CANCEL_PREFIX,
     CLARIFY_PREFIX,
     CONFIRM_REMINDER_PREFIX,
+    DAILY_AGENDA_TOGGLE_PREFIX,
     DELETE_CANCEL_PREFIX,
     DETAIL_CANCEL_PREFIX,
     DELETE_MENU_PREFIX,
@@ -66,6 +71,7 @@ from app.adapters.telegram.keyboards import (
     SNOOZE_PREFIX,
     clarification_keyboard,
     confirmation_keyboard,
+    daily_agenda_settings_keyboard,
     delete_scope_keyboard,
     due_keyboard,
     main_keyboard,
@@ -74,7 +80,7 @@ from app.adapters.telegram.keyboards import (
     reschedule_options_keyboard,
     reschedule_scope_keyboard,
 )
-from app.config import Settings, load_settings
+from app.config import PROJECT_ROOT, Settings, load_settings
 from app.core.ids import new_id
 from app.core.time import local_now
 from app.features.events.reschedule import RescheduleParseError, parse_reschedule_target, quick_reschedule_target
@@ -233,19 +239,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Сегодня", days=1, empty_text="На сегодня напоминаний нет.")
+    await _show_range(update, context, title="Сегодня", days=1, empty_text="На сегодня событий нет.")
 
 
 async def week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Неделя", days=7, empty_text="На неделю напоминаний нет.")
+    await _show_range(update, context, title="Неделя", days=7, empty_text="На неделю событий нет.")
 
 
 async def month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Месяц", days=31, empty_text="На месяц напоминаний нет.", limit=100)
+    await _show_range(update, context, title="Месяц", days=31, empty_text="На месяц событий нет.", limit=100)
+
+
+async def daily_agenda_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    services = _services(context)
+    enabled = services.app_settings.is_daily_agenda_enabled(default=services.settings.daily_agenda_enabled)
+    await _answer_long(
+        update,
+        format_daily_agenda_settings(enabled=enabled, time_label=services.settings.daily_agenda_time),
+        parse_mode=ParseMode.HTML,
+        reply_markup=daily_agenda_settings_keyboard(enabled=enabled),
+    )
 
 
 async def _show_range(
@@ -277,7 +296,7 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     items = await asyncio.to_thread(services.events.upcoming, now=now, limit=20)
     await _answer_long(
         update,
-        format_occurrence_list(items, title="Ближайшие", empty_text="Ближайших напоминаний нет."),
+        format_occurrence_list(items, title="Ближайшие", empty_text="Ближайших событий нет."),
         parse_mode=ParseMode.HTML,
         reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
     )
@@ -312,6 +331,9 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     if text in ("📋 Ближайшие", "Ближайшие"):
         await upcoming(update, context)
+        return
+    if text in ("🌅 Утро", "Утро", "Утренний план"):
+        await daily_agenda_settings(update, context)
         return
     if text in ("❔ Помощь", "Помощь"):
         await start(update, context)
@@ -380,6 +402,49 @@ def _safe_file_id(file_id: str) -> str:
     if len(file_id) <= 10:
         return file_id
     return f"{file_id[:6]}...{file_id[-4:]}"
+
+
+def _git_output(*args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), *args],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _current_version() -> str:
+    return _git_output("rev-parse", "--short=12", "HEAD") or "unknown"
+
+
+def _current_version_subject() -> str:
+    return _git_output("show", "-s", "--format=%s", "HEAD") or "локальная версия"
+
+
+def _current_version_date() -> str:
+    return _git_output("show", "-s", "--format=%ci", "HEAD") or ""
+
+
+def _format_version_update_text() -> str:
+    version = _current_version()
+    subject = _current_version_subject()
+    date = _current_version_date()
+    lines = [
+        "<b>Reminder Bot обновлен и перезапущен</b>",
+        "",
+        f"<b>Версия:</b> <code>{html.escape(version, quote=False)}</code>",
+        f"<b>Коммит:</b> {html.escape(subject, quote=False)}",
+    ]
+    if date:
+        lines.append(f"<b>Дата:</b> <code>{html.escape(date, quote=False)}</code>")
+    return "\n".join(lines)
 
 
 async def _preview_from_text(
@@ -609,6 +674,9 @@ async def send_daily_agenda(context: ContextTypes.DEFAULT_TYPE) -> None:
     services = _services(context)
     owner_id = _owner_id(context)
     now = local_now(services.settings.timezone)
+    if not services.app_settings.is_daily_agenda_enabled(default=services.settings.daily_agenda_enabled):
+        log.info("Daily agenda skipped: disabled")
+        return
     items = await _occurrences_for_range(
         services,
         now=now,
@@ -624,6 +692,35 @@ async def send_daily_agenda(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except Exception:
         log.exception("Failed to send daily agenda")
+
+
+async def notify_version_update(context: ContextTypes.DEFAULT_TYPE) -> None:
+    services = _services(context)
+    owner_id = _owner_id(context)
+    now = local_now(services.settings.timezone)
+    version = _current_version()
+    if version == "unknown":
+        log.info("Version notification skipped: git version is unknown")
+        return
+
+    last_notified = services.app_settings.last_notified_version()
+    if last_notified == version:
+        log.info("Version notification skipped: version=%s already notified", version)
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=owner_id,
+            text=_format_version_update_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_keyboard(),
+        )
+    except Exception:
+        log.exception("Failed to send version update notification version=%s", version)
+        return
+
+    services.app_settings.set_last_notified_version(version, now=now)
+    log.info("Version update notification sent version=%s previous=%s", version, last_notified or "-")
 
 
 async def done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -664,6 +761,23 @@ async def detail_cancel_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer("Отмена")
     await query.edit_message_text(format_action_cancelled())
+
+
+async def daily_agenda_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    raw_value = (query.data or "").removeprefix(DAILY_AGENDA_TOGGLE_PREFIX)
+    enabled = raw_value == "on"
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    services.app_settings.set_daily_agenda_enabled(enabled, now=now)
+    await query.answer("Включено" if enabled else "Выключено")
+    await query.edit_message_text(
+        format_daily_agenda_toggled(enabled=enabled, time_label=services.settings.daily_agenda_time),
+        parse_mode=ParseMode.HTML,
+        reply_markup=daily_agenda_settings_keyboard(enabled=enabled),
+    )
 
 
 async def reschedule_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1035,6 +1149,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CommandHandler("week", week))
     app.add_handler(CommandHandler("month", month))
     app.add_handler(CommandHandler("upcoming", upcoming))
+    app.add_handler(CommandHandler("morning", daily_agenda_settings))
     app.add_handler(CommandHandler("add", add_command))
     app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
@@ -1042,6 +1157,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(clarify_cancel_callback, pattern=f"^{CLARIFY_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(detail_cancel_callback, pattern=f"^{DETAIL_CANCEL_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(daily_agenda_toggle_callback, pattern=f"^{DAILY_AGENDA_TOGGLE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_menu_callback, pattern=f"^{RESCHEDULE_MENU_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_scope_callback, pattern=f"^{RESCHEDULE_SCOPE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_quick_callback, pattern=f"^{RESCHEDULE_QUICK_PREFIX}"))
@@ -1067,13 +1183,17 @@ def build_application(settings: Settings, services: AppServices) -> Application:
             first=10,
             name="due-reminders",
         )
-        if settings.daily_agenda_enabled:
-            hour, minute = settings.daily_agenda_hhmm
-            app.job_queue.run_daily(
-                send_daily_agenda,
-                time=time(hour=hour, minute=minute, tzinfo=ZoneInfo(settings.timezone)),
-                name="daily-agenda",
-            )
+        app.job_queue.run_once(
+            notify_version_update,
+            when=5,
+            name="version-update-notification",
+        )
+        hour, minute = settings.daily_agenda_hhmm
+        app.job_queue.run_daily(
+            send_daily_agenda,
+            time=time(hour=hour, minute=minute, tzinfo=ZoneInfo(settings.timezone)),
+            name="daily-agenda",
+        )
     return app
 
 

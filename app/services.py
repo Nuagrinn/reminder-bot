@@ -4,6 +4,7 @@ from assistant_toolkit.speech import build_speech_to_text
 
 from app.config import Settings
 from app.core.db import build_database
+from app.features.app_settings.service import AppSettingsService
 from app.features.events.service import EventDefaults, EventService
 from app.features.reminder_intake.factory import build_reminder_parser_agent
 from app.features.reminder_intake.service import ReminderIntakeService
@@ -14,6 +15,7 @@ class AppServices:
         self.settings = settings
         self.db = build_database(settings.db_path)
         self.db.migrate()
+        self.app_settings = AppSettingsService(self.db)
         self.events = EventService(
             self.db,
             EventDefaults(

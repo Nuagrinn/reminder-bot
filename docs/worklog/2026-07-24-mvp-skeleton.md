@@ -369,6 +369,41 @@ Date: 2026-07-24
   - reschedule parser;
   - Telegram reschedule keyboards and formatters.
 
+## Morning Toggle, Empty States And Deploy Readiness
+
+- Added persistent `app_settings` table and `AppSettingsService`.
+- Added `daily_agenda_enabled` runtime setting:
+  - defaults to `DAILY_AGENDA_ENABLED` from `.env` until manually changed;
+  - can be toggled without editing `.env` or restarting the bot.
+- Added Telegram entry points for morning agenda settings:
+  - reply keyboard button `🌅 Утро`;
+  - `/morning`;
+  - inline `Включить` / `Выключить`.
+- Daily agenda JobQueue task is now always registered; it checks the runtime
+  flag before sending.
+- Empty states are clearer:
+  - `/today`: `На сегодня событий нет`;
+  - morning agenda: `Доброе утро. На сегодня событий нет`;
+  - week/month/upcoming use the same `событий нет` wording.
+- Added version activation notification, mirroring LearnKeeper:
+  - reads current git commit;
+  - compares it with `app_settings.app_version_last_notified`;
+  - sends `Reminder Bot обновлен и перезапущен` once per new commit;
+  - skips duplicate messages on plain restarts of the same version.
+- Added VPS deploy kit:
+  - `scripts/vps-bootstrap.sh`;
+  - `scripts/vps-deploy.sh`;
+  - hardened `deploy/systemd/reminder-bot.service`.
+- Current VPS readiness status:
+  - ready for manual VPS bootstrap/deploy;
+  - still worth adding a SQLite backup timer before long-term unattended use;
+  - optional later improvement: GitHub Actions SSH deploy workflow.
+- Added tests for:
+  - app settings persistence;
+  - morning agenda toggle keyboard/texts;
+  - empty agenda state;
+  - version update notification text.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

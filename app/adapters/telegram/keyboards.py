@@ -19,6 +19,7 @@ RESCHEDULE_SCOPE_PREFIX = "reschedule_scope:"
 RESCHEDULE_QUICK_PREFIX = "reschedule_quick:"
 RESCHEDULE_CUSTOM_PREFIX = "reschedule_custom:"
 RESCHEDULE_CANCEL_PREFIX = "reschedule_cancel:"
+DAILY_AGENDA_TOGGLE_PREFIX = "daily_agenda_toggle:"
 CONFIRM_REMINDER_PREFIX = "confirm_reminder:"
 DISCARD_REMINDER_PREFIX = "discard_reminder:"
 CLARIFY_PREFIX = "clarify:"
@@ -28,8 +29,9 @@ DETAIL_CANCEL_PREFIX = "detail_cancel:"
 
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [["📆 Сегодня", "🗓 Неделя"], ["📋 Ближайшие", "🗂 Месяц"], ["❔ Помощь"]],
+        [["📆 Сегодня", "🗓 Неделя"], ["📋 Ближайшие", "🗂 Месяц"], ["🌅 Утро", "❔ Помощь"]],
         resize_keyboard=True,
+        is_persistent=True,
     )
 
 
@@ -137,6 +139,14 @@ def reschedule_options_keyboard(*, occurrence_id: str, scope: str) -> InlineKeyb
             [InlineKeyboardButton("Выбрать дату/время", callback_data=f"{RESCHEDULE_CUSTOM_PREFIX}{occurrence_id}:{scope}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{RESCHEDULE_CANCEL_PREFIX}{occurrence_id}")],
         ]
+    )
+
+
+def daily_agenda_settings_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
+    label = "Выключить" if enabled else "Включить"
+    next_value = "off" if enabled else "on"
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(label, callback_data=f"{DAILY_AGENDA_TOGGLE_PREFIX}{next_value}")]]
     )
 
 

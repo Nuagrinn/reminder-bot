@@ -36,13 +36,16 @@ Telegram text/voice
 - Materialized occurrences and notification jobs.
 - Confirmation flow before saving parsed reminders.
 - Clarification flow for missing date/time before confirmation.
-- Daily agenda message at configured morning time.
+- Daily agenda message at configured morning time, with a Telegram runtime
+  on/off switch.
+- Version update notification after a new git commit is activated.
 - Telegram commands:
   - `/start`;
   - `/today`;
   - `/week`;
   - `/month`;
   - `/upcoming`;
+  - `/morning`;
   - `/add`.
 - Notification actions:
   - done;
@@ -99,6 +102,11 @@ app/
 dates. `notification_rules` store relative reminder offsets and time-of-day
 rules. `notification_jobs` store concrete Telegram sends.
 
+`app_settings` stores small runtime flags such as:
+
+- `daily_agenda_enabled`;
+- `app_version_last_notified`.
+
 Claude/fake parser never writes to SQLite directly. It returns a JSON payload;
 Python normalizes the shape, applies defaults and persists events.
 
@@ -136,6 +144,31 @@ All-day tasks may be internally materialized at the default day anchor time
 (`09:00`) so recurrence and notification jobs have a concrete datetime. Telegram
 lists, detail cards and due notifications hide that internal anchor and display
 `день` or just the date instead.
+
+Empty list states are explicit and short, for example `На сегодня событий нет`.
+
+## Morning Agenda
+
+The morning agenda job is always registered at startup, but `send_daily_agenda`
+checks `app_settings.daily_agenda_enabled` before sending. If no runtime value is
+stored yet, the default comes from `DAILY_AGENDA_ENABLED`.
+
+Telegram exposes the setting through:
+
+- reply keyboard button `🌅 Утро`;
+- command `/morning`;
+- inline toggle `Включить` / `Выключить`.
+
+When enabled, the agenda is sent every morning even when today's list is empty,
+so the owner gets a clear `На сегодня событий нет` message.
+
+## Version Notification
+
+On startup, JobQueue runs a one-shot `version-update-notification` job. It reads
+the current git commit, compares it with `app_settings.app_version_last_notified`
+and sends the owner `Reminder Bot обновлен и перезапущен` only when the commit
+changed. This mirrors the LearnKeeper behavior and avoids duplicate messages on
+plain restarts of the same version.
 
 ## Reschedule Model
 

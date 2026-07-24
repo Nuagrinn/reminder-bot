@@ -43,6 +43,12 @@ Date: 2026-07-24
      - `DAILY_AGENDA_TIME=07:00`;
      - `DAILY_AGENDA_LIMIT=50`.
    - Uses the same formatter as `/today`, but with a short morning title.
+   - Runtime Telegram toggle:
+     - reply keyboard button `🌅 Утро`;
+     - command `/morning`;
+     - inline `Включить` / `Выключить`.
+   - If there are no events today, the morning message still says:
+     `На сегодня событий нет`.
 
 5. Safe deletion scopes - done
    - One-off reminders delete directly.
@@ -94,6 +100,20 @@ Date: 2026-07-24
    - If the resolved parse is OK, the bot shows the normal confirmation screen.
    - Clarification selections are logged at INFO level.
 
+10. Version activation notification - done
+   - On startup, the bot checks the current git commit.
+   - If the commit differs from `app_version_last_notified`, it sends the owner
+     a short `Reminder Bot обновлен и перезапущен` message.
+   - The last notified commit is stored in `app_settings`, so normal restarts of
+     the same version do not spam.
+
+11. VPS deploy kit - MVP ready
+   - `deploy/env.vps.example`;
+   - hardened `deploy/systemd/reminder-bot.service`;
+   - `scripts/setup-shared-whisper-cpp-linux.sh`;
+   - `scripts/vps-bootstrap.sh`;
+   - `scripts/vps-deploy.sh`.
+
 ## Recommended Next Order
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
@@ -127,9 +147,8 @@ Date: 2026-07-24
 ## P2 - Later
 
 1. VPS deploy hardening
-   - Full bootstrap/deploy script for `reminder-bot`.
-   - Systemd install instructions.
-   - SQLite backup timer.
+   - Add SQLite backup timer.
+   - Add optional GitHub Actions SSH deploy workflow.
 
 2. Data management
    - Export/import reminders.

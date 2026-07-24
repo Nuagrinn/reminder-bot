@@ -155,4 +155,5 @@ Telegram
 ## Документация
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/feature-list.md](docs/feature-list.md)
 - [docs/worklog/2026-07-24-mvp-skeleton.md](docs/worklog/2026-07-24-mvp-skeleton.md)

@@ -103,6 +103,14 @@ Date: 2026-07-24
   - `/month`;
   - reply keyboard buttons `Неделя` and `Месяц`.
 
+## Backlog Update
+
+- Added `docs/feature-list.md` as the main prioritized feature list.
+- Added recurring interval reminders:
+  - `день через день надо делать замер веса`;
+  - `каждые два дня проверять почту`.
+- Added morning daily agenda: send today's reminders every day at 07:00.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

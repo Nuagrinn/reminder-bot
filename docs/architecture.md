@@ -25,13 +25,17 @@ Telegram text/voice
 - Claude CLI parser scaffold through `assistant_toolkit.llm.StructuredClaudeRunner`.
 - One-off events.
 - Basic recurring events:
+  - daily with interval;
   - weekly by weekday;
   - monthly by month day;
   - yearly birthdays/anniversaries.
 - Materialized occurrences and notification jobs.
+- Confirmation flow before saving parsed reminders.
 - Telegram commands:
   - `/start`;
   - `/today`;
+  - `/week`;
+  - `/month`;
   - `/upcoming`;
   - `/add`.
 - Notification actions:
@@ -96,10 +100,4 @@ Domain code stays local to `reminder-bot`.
 
 ## Next work
 
-- Replace fake parser as default with Claude CLI in deploy env.
-- Add clarification buttons instead of plain clarification text.
-- Add edit flows for date/time/offset.
-- Add list pagination and event detail screens.
-- Add systemd deploy scripts for the shared VPS.
-- Add remote repository once created.
-
+- See [feature-list.md](feature-list.md) for the current prioritized backlog.

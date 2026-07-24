@@ -18,7 +18,7 @@ copy .env.example .env
 
 ```env
 TELEGRAM_BOT_TOKEN=...
-TG_USER_ID=...
+TELEGRAM_OWNER_ID=...
 PARSER_PROVIDER=fake
 STT_PROVIDER=disabled
 ```
@@ -101,4 +101,3 @@ Telegram
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/worklog/2026-07-24-mvp-skeleton.md](docs/worklog/2026-07-24-mvp-skeleton.md)
-

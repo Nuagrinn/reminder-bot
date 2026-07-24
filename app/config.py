@@ -57,7 +57,7 @@ def load_settings() -> Settings:
     def get(name: str, default: str = "") -> str:
         return os.getenv(name) or env_file.get(name, default)
 
-    raw_user_id = get("TG_USER_ID")
+    raw_user_id = get("TELEGRAM_OWNER_ID") or get("TG_USER_ID")
     tg_user_id = int(raw_user_id) if raw_user_id.isdigit() else None
     raw_offsets = get("DEFAULT_BIRTHDAY_OFFSETS_MINUTES", "1440,0")
     birthday_offsets = [
@@ -103,4 +103,3 @@ def load_settings() -> Settings:
         ),
         ffmpeg_bin=get("FFMPEG_BIN", "ffmpeg").strip() or "ffmpeg",
     )
-

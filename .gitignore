@@ -8,6 +8,6 @@ __pycache__/
 build/
 dist/
 .env
+docs/secret_local_envs.txt
 data/
 tools/
-

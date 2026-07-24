@@ -281,7 +281,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
     if settings.tg_user_id is None:
-        raise RuntimeError("TG_USER_ID is required")
+        raise RuntimeError("TELEGRAM_OWNER_ID is required")
     app = Application.builder().token(settings.telegram_bot_token).build()
     app.bot_data["services"] = services
     app.bot_data["owner_id"] = settings.tg_user_id
@@ -324,4 +324,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

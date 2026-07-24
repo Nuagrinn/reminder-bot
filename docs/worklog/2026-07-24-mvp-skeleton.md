@@ -268,6 +268,21 @@ Date: 2026-07-24
     short failure notice when possible.
 - Added INFO logs for voice receive/download/transcription/preview stages.
 
+## Clarification Machine Codes
+
+- Checked a real voice test where Claude returned
+  `question='no_time_specified'` and `options=[]`.
+- Added clarification normalization for machine-readable reasons such as
+  `no_time_specified`, `missing_date`, `datetime_required`.
+- These reasons now render as `Когда напомнить?`.
+- Empty time/date clarification options now fall back to:
+  - `сегодня`;
+  - `завтра`;
+  - `через час`.
+- Normalization is applied in Claude payload handling, Telegram formatting and
+  Telegram callback option resolution.
+- Added regression tests for compact and native Claude clarification payloads.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -61,6 +61,32 @@ class ClaudeNormalizationTest(TestCase):
         self.assertEqual(payload["items"], [])
         self.assertEqual(payload["clarification"]["question"], "Когда напомнить?")
 
+    def test_machine_clarification_reason_gets_human_question_and_options(self) -> None:
+        payload = normalize_claude_payload(
+            {"status": "needs_clarification", "reason": "no_time_specified"},
+            request("пополнить карту"),
+        )
+
+        self.assertEqual(payload["status"], "needs_clarification")
+        self.assertEqual(payload["clarification"]["question"], "Когда напомнить?")
+        self.assertEqual(payload["clarification"]["options"], ["сегодня", "завтра", "через час"])
+
+    def test_native_machine_clarification_gets_human_question_and_options(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "schema_version": "reminder-parser-v3",
+                "intent": "create",
+                "status": "needs_clarification",
+                "raw_text": "пополнить карту",
+                "items": [],
+                "clarification": {"question": "no_time_specified", "options": []},
+            },
+            request("пополнить карту"),
+        )
+
+        self.assertEqual(payload["clarification"]["question"], "Когда напомнить?")
+        self.assertEqual(payload["clarification"]["options"], ["сегодня", "завтра", "через час"])
+
     def test_compact_birthday_payload_gets_yearly_recurrence(self) -> None:
         payload = normalize_claude_payload(
             {

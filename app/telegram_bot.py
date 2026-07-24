@@ -64,12 +64,12 @@ from app.config import Settings, load_settings
 from app.core.ids import new_id
 from app.core.time import local_now
 from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
+from app.features.reminder_intake.clarification import clarification_options_from_payload
 from app.services import AppServices
 
 
 log = logging.getLogger(__name__)
 PENDING_TTL_MINUTES = 30
-DEFAULT_TIME_CLARIFICATION_OPTIONS = ("сегодня", "завтра", "через час")
 
 
 @dataclass(frozen=True)
@@ -357,33 +357,7 @@ def _pending_inline_keyboard(pending_id: str, parse_result: ReminderParseResult)
 
 
 def _clarification_options(parse_result: ReminderParseResult) -> list[str]:
-    payload = parse_result.payload
-    clarification = payload.get("clarification") if isinstance(payload.get("clarification"), dict) else {}
-    raw_options = clarification.get("options") if isinstance(clarification.get("options"), list) else []
-    options = _clean_clarification_options(raw_options)
-    question = str(clarification.get("question") or "").casefold()
-    if not options and _looks_like_time_question(question):
-        options = list(DEFAULT_TIME_CLARIFICATION_OPTIONS)
-    return options[:4]
-
-
-def _clean_clarification_options(raw_options: list[object]) -> list[str]:
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for raw_option in raw_options:
-        option = str(raw_option).strip()
-        if not option:
-            continue
-        key = option.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(option)
-    return cleaned
-
-
-def _looks_like_time_question(question: str) -> bool:
-    return any(marker in question for marker in ("когда", "дата", "дату", "время", "времен"))
+    return clarification_options_from_payload(parse_result.payload)
 
 
 def _apply_clarification(raw_text: str, option: str) -> str:

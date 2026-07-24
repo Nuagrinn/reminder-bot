@@ -25,7 +25,7 @@ from app.adapters.telegram.keyboards import (
 from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import NotificationJobView, OccurrenceView
-from app.features.reminder_intake.agent import FakeReminderParserAgent
+from app.features.reminder_intake.agent import FakeReminderParserAgent, ReminderParseResult
 from tests.test_fake_parser import request
 
 
@@ -64,6 +64,22 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[0][1].callback_data, f"{CLARIFY_PREFIX}pending_123:1")
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{CLARIFY_PREFIX}pending_123:2")
         self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{CLARIFY_CANCEL_PREFIX}pending_123")
+
+    def test_clarification_text_hides_machine_reason(self) -> None:
+        parse_result = ReminderParseResult(
+            payload={
+                "status": "needs_clarification",
+                "clarification": {"question": "no_time_specified", "options": []},
+            },
+            provider="test",
+            model="test",
+        )
+
+        text = format_parse_confirmation(parse_result)
+
+        self.assertIn("Когда напомнить?", text)
+        self.assertIn("сегодня", text)
+        self.assertNotIn("no_time_specified", text)
 
     def test_due_keyboard_opens_delete_scope_menu(self) -> None:
         job = NotificationJobView(

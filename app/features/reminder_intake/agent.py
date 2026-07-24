@@ -8,6 +8,8 @@ from typing import Any, Protocol
 from assistant_toolkit.llm import StructuredClaudeRunner
 
 from app.features.notifications.policy import VALID_TEMPORAL_PROFILES, derive_temporal_profile
+from app.features.reminder_intake.clarification import normalize_clarification
+from app.features.reminder_intake.clarification import normalize_payload_clarification
 from app.features.reminder_intake.schema import PROMPT_VERSION, REMINDER_JSON_SCHEMA
 
 
@@ -304,7 +306,7 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if not isinstance(payload, dict):
         return _clarification(request.raw_text, "Не удалось разобрать ответ парсера.", [])
     if _is_native_payload(payload):
-        return payload
+        return normalize_payload_clarification(payload)
 
     compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
     raw_text = _clean(compact.get("raw_text")) or _clean(payload.get("raw_text")) or request.raw_text
@@ -693,6 +695,7 @@ def _base(raw_text: str, *, intent: str = "create", status: str = "ok", items: l
 
 def _clarification(raw_text: str, question: str, options: list[str]) -> dict[str, Any]:
     payload = _base(raw_text, status="needs_clarification", items=[])
+    question, options = normalize_clarification(question, options)
     payload["clarification"] = {"question": question, "options": options}
     return payload
 

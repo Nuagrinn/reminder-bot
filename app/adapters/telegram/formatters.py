@@ -7,6 +7,7 @@ from assistant_toolkit.telegram import h
 
 from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import ReminderParseResult
+from app.features.reminder_intake.clarification import normalize_clarification
 from app.features.reminder_intake.service import IntakeResult
 
 
@@ -157,9 +158,8 @@ def _date_time_label(value: datetime) -> str:
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:
-    clarification = payload.get("clarification") or {}
-    question = str(clarification.get("question") or "Нужно уточнение.")
-    options = clarification.get("options") or []
+    clarification = payload.get("clarification") if isinstance(payload.get("clarification"), dict) else {}
+    question, options = normalize_clarification(clarification.get("question"), clarification.get("options") or [])
     lines = ["<b>Нужно уточнить</b>", "", h(question)]
     if options:
         lines.extend(["", "<b>Варианты</b>"])

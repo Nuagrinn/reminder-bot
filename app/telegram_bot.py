@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from time import perf_counter
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.constants import ParseMode
@@ -23,6 +24,7 @@ from assistant_toolkit.telegram import split_message
 
 from app.adapters.telegram.formatters import (
     format_done,
+    format_daily_agenda,
     format_due_notification,
     format_event_deleted,
     format_intake_result,
@@ -152,15 +154,7 @@ async def _show_range(
 ) -> None:
     services = _services(context)
     now = local_now(services.settings.timezone)
-    start_at = datetime.combine(now.date(), datetime.min.time())
-    end_at = start_at + timedelta(days=days)
-    await asyncio.to_thread(services.events.materialize_all, now=now)
-    items = await asyncio.to_thread(
-        services.events.list_occurrences,
-        start_at=start_at,
-        end_at=end_at,
-        limit=limit,
-    )
+    items = await _occurrences_for_range(services, now=now, days=days, limit=limit)
     await _answer_long(
         update,
         format_occurrence_list(items, title=title, empty_text=empty_text),
@@ -283,6 +277,24 @@ def _can_confirm(parse_result: ReminderParseResult) -> bool:
     return payload.get("intent") == "create" and payload.get("status") == "ok" and bool(payload.get("items"))
 
 
+async def _occurrences_for_range(
+    services: AppServices,
+    *,
+    now: datetime,
+    days: int,
+    limit: int,
+):
+    start_at = datetime.combine(now.date(), datetime.min.time())
+    end_at = start_at + timedelta(days=days)
+    await asyncio.to_thread(services.events.materialize_all, now=now)
+    return await asyncio.to_thread(
+        services.events.list_occurrences,
+        start_at=start_at,
+        end_at=end_at,
+        limit=limit,
+    )
+
+
 async def notify_due(context: ContextTypes.DEFAULT_TYPE) -> None:
     services = _services(context)
     owner_id = _owner_id(context)
@@ -307,6 +319,27 @@ async def notify_due(context: ContextTypes.DEFAULT_TYPE) -> None:
             message_id=message.message_id,
             now=now,
         )
+
+
+async def send_daily_agenda(context: ContextTypes.DEFAULT_TYPE) -> None:
+    services = _services(context)
+    owner_id = _owner_id(context)
+    now = local_now(services.settings.timezone)
+    items = await _occurrences_for_range(
+        services,
+        now=now,
+        days=1,
+        limit=services.settings.daily_agenda_limit,
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=owner_id,
+            text=format_daily_agenda(items),
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_keyboard(),
+        )
+    except Exception:
+        log.exception("Failed to send daily agenda")
 
 
 async def done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -431,6 +464,13 @@ def build_application(settings: Settings, services: AppServices) -> Application:
             first=10,
             name="due-reminders",
         )
+        if settings.daily_agenda_enabled:
+            hour, minute = settings.daily_agenda_hhmm
+            app.job_queue.run_daily(
+                send_daily_agenda,
+                time=time(hour=hour, minute=minute, tzinfo=ZoneInfo(settings.timezone)),
+                name="daily-agenda",
+            )
     return app
 
 

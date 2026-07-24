@@ -37,6 +37,25 @@ class FakeParserTests(unittest.TestCase):
         self.assertEqual(item["schedule"]["recurrence"]["frequency"], "weekly")
         self.assertEqual(item["schedule"]["recurrence"]["weekdays"], ["TU"])
 
+    def test_parses_every_two_days(self) -> None:
+        result = FakeReminderParserAgent().parse(request("каждые два дня проверять почту"))
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["title"], "Проверять почту")
+        self.assertEqual(item["event_type"], "habit")
+        self.assertEqual(item["schedule"]["kind"], "recurring")
+        self.assertEqual(item["schedule"]["date"], "2026-07-25")
+        self.assertEqual(item["schedule"]["recurrence"]["frequency"], "daily")
+        self.assertEqual(item["schedule"]["recurrence"]["interval"], 2)
+
+    def test_parses_day_after_day(self) -> None:
+        result = FakeReminderParserAgent().parse(request("день через день надо делать замер веса"))
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["title"], "Делать замер веса")
+        self.assertEqual(item["schedule"]["recurrence"]["frequency"], "daily")
+        self.assertEqual(item["schedule"]["recurrence"]["interval"], 2)
+
     def test_parses_birthday(self) -> None:
         result = FakeReminderParserAgent().parse(request("12 августа день рождения Маши"))
         item = result.payload["items"][0]
@@ -55,4 +74,3 @@ class FakeParserTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

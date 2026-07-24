@@ -27,6 +27,9 @@ class Settings:
     default_timed_event_offset_minutes: int
     default_birthday_offsets_minutes: list[int]
     materialize_days: int
+    daily_agenda_enabled: bool
+    daily_agenda_time: str
+    daily_agenda_limit: int
     parser_provider: str
     claude_bin: str
     claude_code_oauth_token: str
@@ -49,6 +52,10 @@ class Settings:
     @property
     def default_day_reminder_hhmm(self) -> tuple[int, int]:
         return parse_hhmm(self.default_day_reminder_time, default=(9, 0))
+
+    @property
+    def daily_agenda_hhmm(self) -> tuple[int, int]:
+        return parse_hhmm(self.daily_agenda_time, default=(7, 0))
 
 
 def load_settings() -> Settings:
@@ -80,6 +87,9 @@ def load_settings() -> Settings:
         ),
         default_birthday_offsets_minutes=birthday_offsets,
         materialize_days=parse_int(get("MATERIALIZE_DAYS", "180"), default=180, min_value=7),
+        daily_agenda_enabled=parse_bool(get("DAILY_AGENDA_ENABLED", "true")),
+        daily_agenda_time=get("DAILY_AGENDA_TIME", "07:00").strip() or "07:00",
+        daily_agenda_limit=parse_int(get("DAILY_AGENDA_LIMIT", "50"), default=50, min_value=1),
         parser_provider=get("PARSER_PROVIDER", "fake").strip().lower() or "fake",
         claude_bin=get("CLAUDE_BIN", "claude").strip() or "claude",
         claude_code_oauth_token=get("CLAUDE_CODE_OAUTH_TOKEN").strip(),

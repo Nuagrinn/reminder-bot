@@ -111,6 +111,23 @@ Date: 2026-07-24
   - `каждые два дня проверять почту`.
 - Added morning daily agenda: send today's reminders every day at 07:00.
 
+## Recurring Intervals And Morning Agenda
+
+- Fake parser now supports:
+  - `день через день надо делать замер веса`;
+  - `каждые два дня проверять почту`;
+  - `каждый день пить витамины`.
+- Claude prompt now instructs the same mapping:
+  - `daily recurrence`;
+  - `interval=2` for `день через день` / `каждые два дня`;
+  - `interval=1` for `каждый день`.
+- Confirmation formatter displays `Повтор: каждые 2 дня`.
+- Added daily agenda config:
+  - `DAILY_AGENDA_ENABLED`;
+  - `DAILY_AGENDA_TIME`;
+  - `DAILY_AGENDA_LIMIT`.
+- Telegram JobQueue sends `План на сегодня` every day at the configured time.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -149,17 +149,40 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
     all_day = True
     title_source = text
 
-    if "кажд" in low:
+    daily_interval = _daily_interval(low)
+    if daily_interval:
+        time_text = _extract_time(low)
+        first_date = _recurring_start_date(request=request, time_text=time_text)
+        all_day = time_text is None
+        schedule = {
+            "kind": "recurring",
+            "timezone": request.timezone,
+            "all_day": all_day,
+            "start_at": f"{first_date.isoformat()}T{time_text}:00" if time_text else None,
+            "date": first_date.isoformat(),
+            "time": time_text,
+            "precision": "datetime" if time_text else "date",
+            "recurrence": {
+                **_recurrence_none(),
+                "frequency": "daily",
+                "interval": daily_interval,
+            },
+        }
+        event_type = "habit"
+        title_source = _strip_recurrence_words(text)
+
+    if schedule is None and "кажд" in low:
         for word, weekday in WEEKDAYS_RU.items():
             if word in low:
+                time_text = _extract_time(low)
                 schedule = {
                     "kind": "recurring",
                     "timezone": request.timezone,
-                    "all_day": True,
+                    "all_day": time_text is None,
                     "start_at": None,
                     "date": None,
-                    "time": _extract_time(low),
-                    "precision": "date",
+                    "time": time_text,
+                    "precision": "datetime" if time_text else "date",
                     "recurrence": {**_recurrence_none(), "frequency": "weekly", "weekdays": [weekday]},
                 }
                 event_type = "habit"
@@ -269,6 +292,35 @@ def _extract_time(low: str) -> str | None:
     return None
 
 
+def _daily_interval(low: str) -> int | None:
+    if re.search(r"\bдень\s+через\s+день\b", low):
+        return 2
+    match = re.search(
+        r"\bкажд\w*\s+(\d+|один|одну|два|две|три|четыре|пять|пару)\s+"
+        r"(?:день|дня|дней)\b",
+        low,
+    )
+    if match:
+        return max(1, _amount(match.group(1)))
+    match = re.search(
+        r"\bраз\s+в\s+(\d+|один|одну|два|две|три|четыре|пять|пару)\s+"
+        r"(?:день|дня|дней)\b",
+        low,
+    )
+    if match:
+        return max(1, _amount(match.group(1)))
+    if re.search(r"\bкажд\w*\s+день\b", low):
+        return 1
+    return None
+
+
+def _recurring_start_date(*, request: ReminderParseRequest, time_text: str | None):
+    hour, minute = _parse_hhmm(time_text or request.default_day_reminder_time)
+    if (hour, minute) <= (request.now.hour, request.now.minute):
+        return request.now.date() + timedelta(days=1)
+    return request.now.date()
+
+
 def _explicit_offsets(low: str) -> list[dict[str, Any]]:
     match = re.search(r"за\s+(\d+|один|одну|пару)\s+(минут|минуты|час|часа|часов|день|дня|дней)", low)
     if not match:
@@ -286,8 +338,14 @@ def _explicit_offsets(low: str) -> list[dict[str, Any]]:
 def _amount(value: str) -> int:
     if value in {"один", "одну"}:
         return 1
-    if value == "пару":
+    if value in {"два", "две", "пару"}:
         return 2
+    if value == "три":
+        return 3
+    if value == "четыре":
+        return 4
+    if value == "пять":
+        return 5
     return int(value)
 
 
@@ -346,6 +404,34 @@ def _strip_time_words(text: str) -> str:
     return re.sub(r"\s+", " ", clean).strip()
 
 
+def _strip_recurrence_words(text: str) -> str:
+    clean = re.sub(r"\bдень\s+через\s+день\b", "", text, flags=re.IGNORECASE)
+    clean = re.sub(
+        r"\bкажд\w*\s+(?:\d+|один|одну|два|две|три|четыре|пять|пару)?\s*"
+        r"(?:день|дня|дней)\b",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    clean = re.sub(
+        r"\bраз\s+в\s+(?:\d+|один|одну|два|две|три|четыре|пять|пару)\s+"
+        r"(?:день|дня|дней)\b",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    return _strip_time_words(clean)
+
+
+def _parse_hhmm(value: str) -> tuple[int, int]:
+    match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", value or "")
+    if not match:
+        return 9, 0
+    hour = min(23, max(0, int(match.group(1))))
+    minute = min(59, max(0, int(match.group(2))))
+    return hour, minute
+
+
 def _remove_patterns(text: str, patterns: list[str]) -> str:
     clean = text
     for pattern in patterns:
@@ -355,4 +441,3 @@ def _remove_patterns(text: str, patterns: list[str]) -> str:
 
 def _birthday_title(text: str) -> str:
     return _title(text)
-

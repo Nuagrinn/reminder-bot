@@ -79,6 +79,16 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(upcoming[0].occurs_at.date().isoformat(), "2026-07-28")
         self.assertEqual(upcoming[1].occurs_at.date().isoformat(), "2026-08-04")
 
+    def test_every_two_days_materializes_interval(self) -> None:
+        self._create("каждые два дня проверять почту")
+        upcoming = self.service.upcoming(now=self.now, limit=3)
+
+        self.assertEqual([item.occurs_at.date().isoformat() for item in upcoming], [
+            "2026-07-25",
+            "2026-07-27",
+            "2026-07-29",
+        ])
+
     def test_birthday_creates_two_default_jobs(self) -> None:
         self._create("12 августа день рождения Маши")
         upcoming = self.service.upcoming(now=self.now, limit=3)

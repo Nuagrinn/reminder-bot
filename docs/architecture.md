@@ -31,6 +31,7 @@ Telegram text/voice
   - yearly birthdays/anniversaries.
 - Materialized occurrences and notification jobs.
 - Confirmation flow before saving parsed reminders.
+- Daily agenda message at configured morning time.
 - Telegram commands:
   - `/start`;
   - `/today`;

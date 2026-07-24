@@ -10,32 +10,29 @@ Date: 2026-07-24
      and recurring reminders.
    - Add parser tests from real phrases sent in Telegram.
 
-2. Recurring reminders with intervals
+2. Recurring reminders with intervals - done in MVP parser
    - Support phrases like `день через день надо делать замер веса`.
    - Support phrases like `каждые два дня проверять почту`.
    - Store this as `frequency=daily` with `interval=2`.
    - Show confirmation as `Повтор: каждые 2 дня`.
-   - Current state: recurrence engine already supports `daily interval=2`;
-     parser and prompt examples still need to be updated.
+   - Current state: recurrence engine, fake parser, formatter and Claude prompt
+     are updated.
 
-3. Morning daily agenda
+3. Morning daily agenda - done
    - Every morning at `07:00 Europe/Moscow`, send today's planned reminders.
-   - Add config:
+   - Config:
      - `DAILY_AGENDA_ENABLED=true`;
      - `DAILY_AGENDA_TIME=07:00`;
      - `DAILY_AGENDA_LIMIT=50`.
-   - Use the same formatter as `/today`, but with a short morning title.
+   - Uses the same formatter as `/today`, but with a short morning title.
 
 ## Recommended Next Order
 
-1. Implement recurring interval parsing in the fake parser and Claude prompt.
-   This is small and immediately improves text/voice capture.
-2. Implement the 07:00 daily agenda job.
-   This is also compact and makes the bot useful even when no reminder is due
-   yet.
-3. Then switch real parsing to Claude CLI and collect real Telegram phrases.
+1. Switch real parsing to Claude CLI and collect real Telegram phrases.
    The confirmation screen is already in place, so testing Claude output is much
    safer now.
+2. Add clarification buttons for missing date/time.
+3. Add edit controls on the confirmation screen.
 
 ## P1 - Near Next
 

@@ -22,6 +22,9 @@ def build_system_prompt(request: ReminderParseRequest) -> str:
         "- дефолтные уведомления не придумывай: если пользователь не назвал offset, "
         "notification_offsets оставь пустым;\n"
         "- для дней рождения используй event_type='birthday' и yearly recurrence;\n"
+        "- для 'день через день' и 'каждые два дня' используй "
+        "daily recurrence и interval=2;\n"
+        "- для 'каждый день' используй daily recurrence и interval=1;\n"
         "- для 'каждый вторник' используй weekly recurrence и weekday 'TU';\n"
         "- для 'каждого 25 числа' используй monthly recurrence и month_days=[25];\n"
         "- title пиши без слов 'надо', 'нужно', 'напомни';\n"
@@ -39,4 +42,3 @@ def build_user_prompt(request: ReminderParseRequest) -> str:
         "Разбери пользовательскую команду и верни JSON.\n\n"
         f"REQUEST_JSON:\n{json.dumps(payload, ensure_ascii=False)}"
     )
-

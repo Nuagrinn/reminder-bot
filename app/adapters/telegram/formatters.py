@@ -81,6 +81,14 @@ def format_occurrence_list(items: list[OccurrenceView], *, title: str, empty_tex
     return "\n".join(lines)
 
 
+def format_daily_agenda(items: list[OccurrenceView]) -> str:
+    return format_occurrence_list(
+        items,
+        title="План на сегодня",
+        empty_text="Доброе утро. На сегодня ничего не запланировано.",
+    )
+
+
 def format_due_notification(job: NotificationJobView) -> str:
     return (
         "<b>Напоминание</b>\n\n"
@@ -155,7 +163,9 @@ def _recurrence_label(item: dict[str, Any]) -> str:
     interval = int(recurrence.get("interval") or 1)
     every = "" if interval == 1 else f"каждые {interval} "
     if frequency == "daily":
-        return f"{every}день"
+        if interval == 1:
+            return "каждый день"
+        return f"{every}{_day_plural(interval)}"
     if frequency == "weekly":
         weekdays = recurrence.get("weekdays") or []
         days = ", ".join(_weekday_label(str(day)) for day in weekdays) if weekdays else "неделю"
@@ -211,6 +221,14 @@ def _weekday_label(value: str) -> str:
         "SA": "сб",
         "SU": "вс",
     }.get(value, value)
+
+
+def _day_plural(value: int) -> str:
+    if value % 10 == 1 and value % 100 != 11:
+        return "день"
+    if 2 <= value % 10 <= 4 and not 12 <= value % 100 <= 14:
+        return "дня"
+    return "дней"
 
 
 def _h_option(value: object) -> str:

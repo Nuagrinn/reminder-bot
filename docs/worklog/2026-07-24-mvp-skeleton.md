@@ -443,6 +443,18 @@ Date: 2026-07-24
 - Fixed `scripts/vps-bootstrap.sh` so shared whisper setup runs from the app
   user's home directory instead of inheriting `/root`.
 
+## Upcoming Today All-Day Fix
+
+- Fixed `/upcoming` / `Ближайшие` selection window.
+- Before the fix, `upcoming()` started from the current minute. All-day tasks
+  are stored with an internal `09:00` anchor, so an unfinished task for today
+  disappeared from `Ближайшие` in the evening even though it still appeared in
+  `/today`.
+- `upcoming()` now starts from the beginning of the current day and still keeps
+  the normal future horizon.
+- Added a regression test for a same-day all-day task created after the
+  internal morning anchor.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

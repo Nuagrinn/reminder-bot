@@ -95,6 +95,17 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(due_first[0].all_day)
         self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 19, 42))
 
+    def test_upcoming_keeps_today_all_day_tasks_after_internal_anchor_time(self) -> None:
+        now = datetime(2026, 7, 24, 20, 1)
+        self._create_at("надо сегодня вытащить кошачий корм из машины", now=now)
+
+        upcoming = self.service.upcoming(now=now, limit=10)
+
+        self.assertEqual(len(upcoming), 1)
+        self.assertTrue(upcoming[0].all_day)
+        self.assertEqual(upcoming[0].occurs_at, datetime(2026, 7, 24, 9, 0))
+        self.assertEqual(upcoming[0].title, "Вытащить кошачий корм из машины")
+
     def test_snooze_creates_new_pending_job(self) -> None:
         self._create("через 2 часа проверить духовку")
         due_at_event = datetime(2026, 7, 24, 14, 0)

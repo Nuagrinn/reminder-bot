@@ -303,8 +303,9 @@ class EventService:
         return occurrence_view_from_row(row)
 
     def upcoming(self, *, now: datetime, limit: int = 20) -> list[OccurrenceView]:
+        start_at = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_at = now + timedelta(days=self.defaults.materialize_days)
-        return self.list_occurrences(start_at=now, end_at=end_at, limit=limit)
+        return self.list_occurrences(start_at=start_at, end_at=end_at, limit=limit)
 
     def due_jobs(self, *, now: datetime, limit: int = 20) -> list[NotificationJobView]:
         with self.db.session() as conn:

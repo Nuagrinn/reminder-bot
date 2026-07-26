@@ -126,6 +126,14 @@ def _owner_id(context: ContextTypes.DEFAULT_TYPE) -> int:
     return int(context.application.bot_data["owner_id"])
 
 
+def _stt_semaphore(context: ContextTypes.DEFAULT_TYPE) -> asyncio.Semaphore:
+    return context.application.bot_data.setdefault("stt_semaphore", asyncio.Semaphore(1))
+
+
+def _parser_semaphore(context: ContextTypes.DEFAULT_TYPE) -> asyncio.Semaphore:
+    return context.application.bot_data.setdefault("parser_semaphore", asyncio.Semaphore(2))
+
+
 def _pending_reminders(context: ContextTypes.DEFAULT_TYPE) -> dict[str, PendingReminder]:
     store = context.application.bot_data.setdefault("pending_reminders", {})
     return store
@@ -358,7 +366,7 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         tg_file = await context.bot.get_file(voice.file_id)
         await tg_file.download_to_drive(str(audio_path))
         log.info("Voice transcription started path=%s", audio_path.name)
-        transcript = await asyncio.to_thread(services.speech.transcribe, audio_path)
+        transcript = await _transcribe_voice(context, services, audio_path)
     except SpeechToTextError as exc:
         await _safe_voice_failure(update, wait_message, f"Не смог распознать голосовое.\n\n{exc}")
         return
@@ -403,6 +411,12 @@ def _safe_file_id(file_id: str) -> str:
     if len(file_id) <= 10:
         return file_id
     return f"{file_id[:6]}...{file_id[-4:]}"
+
+
+async def _transcribe_voice(context: ContextTypes.DEFAULT_TYPE, services: AppServices, audio_path: Path) -> str:
+    semaphore = _stt_semaphore(context)
+    async with semaphore:
+        return await asyncio.to_thread(services.speech.transcribe, audio_path)
 
 
 def _git_output(*args: str) -> str:
@@ -461,7 +475,7 @@ async def _preview_from_text(
     _cleanup_pending(context, now=now)
     request = _parse_request(services.settings, text, source_kind, now)
     try:
-        parse_result = await asyncio.to_thread(services.intake.parse, request)
+        parse_result = await _parse_reminder(context, services, request)
     except Exception as exc:
         log.exception("Reminder intake failed")
         return await _deliver_text(
@@ -485,6 +499,16 @@ async def _preview_from_text(
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard or main_keyboard(),
     )
+
+
+async def _parse_reminder(
+    context: ContextTypes.DEFAULT_TYPE,
+    services: AppServices,
+    request: ReminderParseRequest,
+) -> ReminderParseResult:
+    semaphore = _parser_semaphore(context)
+    async with semaphore:
+        return await asyncio.to_thread(services.intake.parse, request)
 
 
 def _can_confirm(parse_result: ReminderParseResult) -> bool:
@@ -1252,11 +1276,16 @@ async def clarify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         _short_log_text(pending.request.raw_text),
         _short_log_text(resolved_text),
     )
+    await query.answer("Уточняю...")
     try:
-        parse_result = await asyncio.to_thread(services.intake.parse, request)
+        await query.edit_message_text("Уточняю напоминание...")
+    except Exception:
+        log.warning("Failed to show clarification processing state pending_id=%s", pending_id, exc_info=True)
+
+    try:
+        parse_result = await _parse_reminder(context, services, request)
     except Exception as exc:
         log.exception("Reminder clarification parse failed pending_id=%s", pending_id)
-        await query.answer("Не разобрал", show_alert=True)
         await query.edit_message_text(f"Не смог разобрать уточнение.\n\n{exc}")
         return
 
@@ -1265,7 +1294,6 @@ async def clarify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         parse_result=parse_result,
         created_at=now,
     )
-    await query.answer("Уточнил")
     await query.edit_message_text(
         format_parse_confirmation(parse_result),
         parse_mode=ParseMode.HTML,
@@ -1295,9 +1323,18 @@ def build_application(settings: Settings, services: AppServices) -> Application:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
     if settings.tg_user_id is None:
         raise RuntimeError("TELEGRAM_OWNER_ID is required")
-    app = Application.builder().token(settings.telegram_bot_token).build()
+    app = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .concurrent_updates(settings.telegram_concurrent_updates)
+        .connection_pool_size(settings.telegram_connection_pool_size)
+        .pool_timeout(30)
+        .build()
+    )
     app.bot_data["services"] = services
     app.bot_data["owner_id"] = settings.tg_user_id
+    app.bot_data["stt_semaphore"] = asyncio.Semaphore(settings.stt_max_concurrent)
+    app.bot_data["parser_semaphore"] = asyncio.Semaphore(settings.parser_max_concurrent)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("today", today))

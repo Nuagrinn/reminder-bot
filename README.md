@@ -19,10 +19,13 @@ copy .env.example .env
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_OWNER_ID=...
+TELEGRAM_CONCURRENT_UPDATES=4
 DAILY_AGENDA_ENABLED=true
 DAILY_AGENDA_TIME=07:00
 PARSER_PROVIDER=fake
+PARSER_MAX_CONCURRENT=2
 STT_PROVIDER=disabled
+STT_MAX_CONCURRENT=1
 ```
 
 Применить миграции:
@@ -145,6 +148,14 @@ Deploy-скрипт подтягивает `main`, обновляет Python-п�
   Это можно включать/выключать кнопкой `🌅 Утро` без правки `.env`.
 - При старте новой git-версии бот присылает владельцу сообщение, что версия
   обновлена и перезапущена.
+- Telegram updates обрабатываются параллельно (`TELEGRAM_CONCURRENT_UPDATES=4`),
+  но тяжелые операции ограничены:
+  - STT/whisper: `STT_MAX_CONCURRENT=1`;
+  - parser/Claude: `PARSER_MAX_CONCURRENT=2`.
+  Так бот быстрее отвечает на кнопки и принимает пачку голосовых, но не
+  запускает несколько тяжелых whisper-процессов одновременно.
+- Clarification-кнопки отвечают Telegram сразу и показывают
+  `Уточняю напоминание...`, а долгий Claude-разбор идет уже после этого.
 - Команды:
   - `/start`
   - `/today`

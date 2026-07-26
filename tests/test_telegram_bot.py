@@ -5,14 +5,17 @@ from datetime import datetime
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
-from app.adapters.telegram.keyboards import HIDE_MESSAGE_PREFIX, HIDE_NOTIFICATION_PREFIX
+from app.adapters.telegram.keyboards import CLARIFY_PREFIX, HIDE_MESSAGE_PREFIX, HIDE_NOTIFICATION_PREFIX
 from app.adapters.telegram.keyboards import LIST_PAGE_PREFIX, OCCURRENCE_DETAIL_PREFIX
 from app.features.events.models import OccurrenceView
+from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.telegram_bot import (
     _build_occurrence_list_view,
     _deliver_text,
     _format_version_update_text,
     configure_logging,
+    PendingReminder,
+    clarify_callback,
     hide_message_callback,
     hide_notification_callback,
     list_page_callback,
@@ -133,6 +136,45 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
         self.assertEqual([view.kind for view in views], ["today", "week", "month", "upcoming", "agenda", "annual"])
         self.assertTrue(all(view.page_size == 10 for view in views))
 
+    async def test_clarification_callback_acknowledges_before_slow_parse(self) -> None:
+        message = FakeDeletableMessage()
+        query = FakeCallbackQuery(data=f"{CLARIFY_PREFIX}pending_1:0", message=message)
+        update = FakeCallbackUpdate(query=query, user_id=123)
+        services = FakeServices(items=[])
+        services.intake = FakeClarificationIntake(query)
+        context = FakeContext(owner_id=123, services=services)
+        now = datetime(2026, 7, 26, 23, 0)
+        request = ReminderParseRequest(
+            raw_text="Купить кофе",
+            source_kind="voice",
+            now=now,
+            timezone="Europe/Moscow",
+            default_day_reminder_time="09:00",
+            default_timed_event_offset_minutes=120,
+            default_birthday_offsets_minutes=[1440, 0],
+        )
+        context.application.bot_data["pending_reminders"] = {
+            "pending_1": PendingReminder(
+                request=request,
+                parse_result=ReminderParseResult(
+                    payload={
+                        "intent": "create",
+                        "status": "needs_clarification",
+                        "clarification": {"question": "Когда напомнить?", "options": ["Сегодня"]},
+                    },
+                    provider="test",
+                    model="test",
+                ),
+                created_at=now,
+            )
+        }
+
+        await clarify_callback(update, context)
+
+        self.assertEqual(query.answers[0], ("Уточняю...", {}))
+        self.assertEqual(message.edits[0][0], "Уточняю напоминание...")
+        self.assertIn("Проверь напоминание", message.edits[-1][0])
+
 
 class FakeUpdate:
     def __init__(self, *, message=None):
@@ -217,6 +259,9 @@ class FakeServices:
 class FakeSettings:
     timezone = "Europe/Moscow"
     daily_agenda_limit = 50
+    default_day_reminder_time = "09:00"
+    default_timed_event_offset_minutes = 120
+    default_birthday_offsets_minutes = [1440, 0]
 
 
 class FakeDefaults:
@@ -244,6 +289,31 @@ class FakeEvents:
             if item.occurrence_id == occurrence_id:
                 return item
         raise ValueError(f"Occurrence not found: {occurrence_id}")
+
+
+class FakeClarificationIntake:
+    def __init__(self, query: FakeCallbackQuery):
+        self.query = query
+
+    def parse(self, request: ReminderParseRequest) -> ReminderParseResult:
+        assert self.query.answers == [("Уточняю...", {})]
+        assert self.query.message.edits[0][0] == "Уточняю напоминание..."
+        assert request.raw_text == "Купить кофе Сегодня"
+        return ReminderParseResult(
+            payload={
+                "intent": "create",
+                "status": "ok",
+                "items": [
+                    {
+                        "title": "Купить кофе",
+                        "schedule": {"date": "2026-07-26"},
+                        "notification_offsets": [],
+                    }
+                ],
+            },
+            provider="test",
+            model="test",
+        )
 
 
 def fake_occurrence(occurrence_id: str, title: str, occurs_at: datetime) -> OccurrenceView:

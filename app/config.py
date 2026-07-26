@@ -21,6 +21,8 @@ class Settings:
     db_path: Path
     telegram_bot_token: str
     tg_user_id: int | None
+    telegram_concurrent_updates: int
+    telegram_connection_pool_size: int
     reminder_tick_seconds: int
     timezone: str
     default_day_reminder_time: str
@@ -51,11 +53,13 @@ class Settings:
     stt_language: str
     stt_prompt: str
     stt_timeout_seconds: int
+    stt_max_concurrent: int
     stt_whisper_bin: str
     stt_whisper_model: str
     stt_whisper_cpp_bin: str
     stt_whisper_cpp_model: Path
     ffmpeg_bin: str
+    parser_max_concurrent: int
 
     @property
     def default_day_reminder_hhmm(self) -> tuple[int, int]:
@@ -93,6 +97,8 @@ def load_settings() -> Settings:
         db_path=resolve_path(get("DB_PATH"), default=PROJECT_ROOT / "data" / "reminder.sqlite3", base_dir=PROJECT_ROOT),
         telegram_bot_token=get("TELEGRAM_BOT_TOKEN").strip(),
         tg_user_id=tg_user_id,
+        telegram_concurrent_updates=parse_int(get("TELEGRAM_CONCURRENT_UPDATES", "4"), default=4, min_value=1),
+        telegram_connection_pool_size=parse_int(get("TELEGRAM_CONNECTION_POOL_SIZE", "16"), default=16, min_value=4),
         reminder_tick_seconds=parse_int(get("REMINDER_TICK_SECONDS", "60"), default=60, min_value=10),
         timezone=get("TIMEZONE", "Europe/Moscow").strip() or "Europe/Moscow",
         default_day_reminder_time=get("DEFAULT_DAY_REMINDER_TIME", "09:00").strip() or "09:00",
@@ -136,6 +142,7 @@ def load_settings() -> Settings:
         claude_max_budget_usd=_parse_float(get("CLAUDE_MAX_BUDGET_USD", "0.12"), default=0.12, min_value=0),
         claude_system_prompt_mode=get("CLAUDE_SYSTEM_PROMPT_MODE", "replace").strip().lower() or "replace",
         allow_paid_api=parse_bool(get("ALLOW_PAID_API", "false")),
+        parser_max_concurrent=parse_int(get("PARSER_MAX_CONCURRENT", "2"), default=2, min_value=1),
         stt_provider=get("STT_PROVIDER", "disabled").strip().lower() or "disabled",
         voice_dir=resolve_path(get("VOICE_DIR"), default=PROJECT_ROOT / "data" / "voice", base_dir=PROJECT_ROOT),
         openai_api_key=get("OPENAI_API_KEY").strip(),
@@ -143,6 +150,7 @@ def load_settings() -> Settings:
         stt_language=get("STT_LANGUAGE", "ru").strip() or "ru",
         stt_prompt=get("STT_PROMPT").strip(),
         stt_timeout_seconds=parse_int(get("STT_TIMEOUT_SECONDS", "180"), default=180, min_value=10),
+        stt_max_concurrent=parse_int(get("STT_MAX_CONCURRENT", "1"), default=1, min_value=1),
         stt_whisper_bin=get("STT_WHISPER_BIN", "whisper").strip() or "whisper",
         stt_whisper_model=get("STT_WHISPER_MODEL", "small").strip(),
         stt_whisper_cpp_bin=get("STT_WHISPER_CPP_BIN", "whisper-cli").strip() or "whisper-cli",

@@ -114,15 +114,27 @@ Date: 2026-07-24
      original phrase and reruns the parser.
    - If the resolved parse is OK, the bot shows the normal confirmation screen.
    - Clarification selections are logged at INFO level.
+   - Clarification button callbacks are acknowledged immediately before the
+     slower parser/Claude roundtrip, so Telegram does not expire the clicked
+     button while the bot is thinking.
 
-11. Version activation notification - done
+11. Concurrent Telegram processing - done
+   - `TELEGRAM_CONCURRENT_UPDATES=4` lets Telegram process independent updates
+     in parallel.
+   - Heavy operations are still bounded:
+     - `STT_MAX_CONCURRENT=1`;
+     - `PARSER_MAX_CONCURRENT=2`.
+   - This keeps the bot responsive when several voice messages arrive in a row
+     without launching multiple heavy whisper jobs at once.
+
+12. Version activation notification - done
    - On startup, the bot checks the current git commit.
    - If the commit differs from `app_version_last_notified`, it sends the owner
      a short `Reminder Bot обновлен и перезапущен` message.
    - The last notified commit is stored in `app_settings`, so normal restarts of
      the same version do not spam.
 
-12. VPS deploy kit - deployed
+13. VPS deploy kit - deployed
    - `deploy/env.vps.example`;
    - hardened `deploy/systemd/reminder-bot.service`;
    - `scripts/setup-shared-whisper-cpp-linux.sh`;
@@ -137,7 +149,7 @@ Date: 2026-07-24
      - shared STT model:
        `/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin`.
 
-13. Parser title language guard - done
+14. Parser title language guard - done
    - Claude prompt now explicitly says to preserve raw_text language/script.
    - If a Russian command returns an English-only `title`, normalization falls
      back to a cleaned Russian title from the original phrase.

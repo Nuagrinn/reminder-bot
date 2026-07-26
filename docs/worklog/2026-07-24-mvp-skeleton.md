@@ -610,6 +610,32 @@ Date: 2026-07-24
 - The workflow uses a single concurrency group `reminder-bot-deploy`, so a new
   push cancels an older in-progress deploy.
 
+## Concurrent Voice And Clarification Flow
+
+- Investigated a real Telegram case with several voice messages sent back to
+  back.
+- Root cause:
+  - voice updates were processed sequentially;
+  - the second voice message waited for the first voice+Claude roundtrip;
+  - clarification callback did the slow parser/Claude roundtrip before calling
+    `answer_callback_query`;
+  - Telegram expired the clicked callback query, then a second click looked at
+    a changed pending draft and rendered as `Вариант устарел`.
+- Added Telegram update concurrency:
+  - `TELEGRAM_CONCURRENT_UPDATES=4`;
+  - `TELEGRAM_CONNECTION_POOL_SIZE=16`.
+- Added bounded heavy-work semaphores:
+  - STT/whisper: `STT_MAX_CONCURRENT=1`;
+  - parser/Claude: `PARSER_MAX_CONCURRENT=2`.
+- Clarification callbacks now:
+  - validate the selected option;
+  - immediately answer Telegram with `Уточняю...`;
+  - immediately edit the card to `Уточняю напоминание...`;
+  - only then run the slower parser/Claude flow;
+  - edit the same card into confirmation or a new clarification result.
+- Added a regression test that asserts the clarification callback is
+  acknowledged before the parser starts.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -532,6 +532,25 @@ Date: 2026-07-24
   message unexpectedly.
 - Added tests for keyboard callback data and generic hide callback deletion.
 
+## Compact Occurrence Lists Feature Plan
+
+- Created separate feature plan:
+  `docs/feature-plans/compact-occurrence-lists.md`.
+- MVP decision:
+  - one unified compact list renderer for `/today`, `/week`, `/month`,
+    `/upcoming`, `/annual` and daily agenda;
+  - readable content stays in message text;
+  - inline buttons become short numeric actions like `[1] [2] [3]`;
+  - add compact dates such as `Вс 26.07 · сегодня`;
+  - add pagination once a list exceeds the visible page size.
+- Rich Messages research:
+  - Telegram Bot API already has Rich Messages (`sendRichMessage`);
+  - installed and latest `python-telegram-bot` is `22.8`;
+  - `telegram.Bot` in `22.8` has no `send_rich_message` method;
+  - recommendation is to build the compact list MVP first around a neutral view
+    model, then optionally add a raw Bot API Rich Messages renderer behind a
+    feature flag.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

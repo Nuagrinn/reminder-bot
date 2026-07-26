@@ -142,6 +142,8 @@ Deploy-скрипт подтягивает `main`, обновляет Python-п�
   - `/morning`
   - `/add текст`
 
+План следующего улучшения списков: [Compact Occurrence Lists UX](docs/feature-plans/compact-occurrence-lists.md).
+
 Списки `/today`, `/week`, `/month`, `/upcoming`, `/annual` и утренний план
 показывают нумерованные inline-кнопки. По кнопке открывается карточка
 напоминания с действиями `Готово`, `Перенести` и `Удалить`. Если событий нет,

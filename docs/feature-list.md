@@ -139,13 +139,20 @@ Date: 2026-07-24
    - The title cleaner also strips date/time helper words like `сегодня
      вечером` before saving.
 
+## Feature Plans
+
+- [Compact Occurrence Lists UX](feature-plans/compact-occurrence-lists.md):
+  unified MVP for `/today`, `/week`, `/month`, `/upcoming`, `/annual` and daily
+  agenda; includes Rich Messages research.
+
 ## Recommended Next Order
 
-1. Run the bot in Telegram with Claude enabled and collect real phrases that
+1. Implement compact occurrence lists MVP:
+   [plan](feature-plans/compact-occurrence-lists.md).
+2. Run the bot in Telegram with Claude enabled and collect real phrases that
    parse poorly.
-2. Add edit controls on the confirmation screen for reminder pattern:
+3. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
-3. Add pagination for long `/upcoming`, `/week`, `/month`, `/annual` lists.
 4. Improve clarification UX after real usage:
    - add custom date/time entry from button;
    - optionally add richer option generation from Claude.
@@ -160,7 +167,8 @@ Date: 2026-07-24
      - cancel.
 
 2. Better list UX
-   - Pagination for `/upcoming`, `/week`, `/month`.
+   - Compact paged list plan:
+     [Compact Occurrence Lists UX](feature-plans/compact-occurrence-lists.md).
    - Optional back button from detail to the previous list.
    - Optional snooze from list detail when there is a pending job.
 

@@ -507,6 +507,31 @@ Date: 2026-07-24
   - events with `all_day=0` and no concrete `time/start_at` should be marked
     all-day, then rematerialized.
 
+## Generic Hide Button For Service Cards
+
+- User-facing issue observed in Telegram:
+  - occurrence lists had numbered inline buttons, but no quick way to remove
+    the list card from chat after viewing it.
+- Added generic `hide_message` callback:
+  - deletes only the Telegram message;
+  - does not mark occurrences done;
+  - does not delete events;
+  - does not reschedule jobs.
+- Added `Скрыть` to non-due service cards:
+  - parse confirmation;
+  - clarification choices;
+  - occurrence lists;
+  - occurrence detail;
+  - delete scope menu;
+  - reschedule scope/options;
+  - morning agenda settings.
+- Due notification cards keep their job-specific hide action, so logs still
+  record the notification job id.
+- If a hidden card belongs to an active reschedule text flow, the temporary
+  pending reschedule state is cleared to avoid applying the next free-text
+  message unexpectedly.
+- Added tests for keyboard callback data and generic hide callback deletion.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -11,6 +11,7 @@ DONE_PREFIX = "done:"
 OCCURRENCE_DETAIL_PREFIX = "occ_detail:"
 SNOOZE_PREFIX = "snooze:"
 HIDE_NOTIFICATION_PREFIX = "hide_notification:"
+HIDE_MESSAGE_PREFIX = "hide_message:"
 CANCEL_EVENT_PREFIX = "cancel_event:"
 DELETE_MENU_PREFIX = "delete_menu:"
 DELETE_OCCURRENCE_PREFIX = "delete_occurrence:"
@@ -47,6 +48,7 @@ def confirmation_keyboard(pending_id: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("Сохранить", callback_data=f"{CONFIRM_REMINDER_PREFIX}{pending_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DISCARD_REMINDER_PREFIX}{pending_id}")],
+            _hide_row("confirmation"),
         ]
     )
 
@@ -67,6 +69,7 @@ def clarification_keyboard(pending_id: str, options: list[str]) -> InlineKeyboar
     if option_row:
         rows.append(option_row)
     rows.append([InlineKeyboardButton("Отмена", callback_data=f"{CLARIFY_CANCEL_PREFIX}{pending_id}")])
+    rows.append(_hide_row("clarification"))
     return InlineKeyboardMarkup(rows)
 
 
@@ -96,6 +99,7 @@ def occurrence_list_keyboard(items: list[OccurrenceView]) -> InlineKeyboardMarku
                 )
             ]
         )
+    rows.append(_hide_row("list"))
     return InlineKeyboardMarkup(rows)
 
 
@@ -106,6 +110,7 @@ def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DETAIL_CANCEL_PREFIX}{occurrence_id}")],
+            _hide_row("detail"),
         ]
     )
 
@@ -117,6 +122,7 @@ def delete_scope_keyboard(*, occurrence_id: str, event_id: str) -> InlineKeyboar
             [InlineKeyboardButton("С этого раза и дальше", callback_data=f"{DELETE_SERIES_FROM_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Всю серию", callback_data=f"{CANCEL_EVENT_PREFIX}{event_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DELETE_CANCEL_PREFIX}{occurrence_id}")],
+            _hide_row("delete"),
         ]
     )
 
@@ -127,6 +133,7 @@ def reschedule_scope_keyboard(*, occurrence_id: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Только этот раз", callback_data=f"{RESCHEDULE_SCOPE_PREFIX}{occurrence_id}:occ")],
             [InlineKeyboardButton("С этого раза и дальше", callback_data=f"{RESCHEDULE_SCOPE_PREFIX}{occurrence_id}:series")],
             [InlineKeyboardButton("Отмена", callback_data=f"{RESCHEDULE_CANCEL_PREFIX}{occurrence_id}")],
+            _hide_row("reschedule_scope"),
         ]
     )
 
@@ -146,6 +153,7 @@ def reschedule_options_keyboard(*, occurrence_id: str, scope: str) -> InlineKeyb
             [InlineKeyboardButton("Через неделю", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{prefix}next_week")],
             [InlineKeyboardButton("Выбрать дату/время", callback_data=f"{RESCHEDULE_CUSTOM_PREFIX}{occurrence_id}:{scope}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{RESCHEDULE_CANCEL_PREFIX}{occurrence_id}")],
+            _hide_row("reschedule_options"),
         ]
     )
 
@@ -154,8 +162,15 @@ def daily_agenda_settings_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
     label = "Выключить" if enabled else "Включить"
     next_value = "off" if enabled else "on"
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(label, callback_data=f"{DAILY_AGENDA_TOGGLE_PREFIX}{next_value}")]]
+        [
+            [InlineKeyboardButton(label, callback_data=f"{DAILY_AGENDA_TOGGLE_PREFIX}{next_value}")],
+            _hide_row("daily_agenda"),
+        ]
     )
+
+
+def _hide_row(scope: str) -> list[InlineKeyboardButton]:
+    return [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_MESSAGE_PREFIX}{scope}")]
 
 
 def _clarification_button_label(option: str) -> str:

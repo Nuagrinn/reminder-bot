@@ -64,6 +64,8 @@ Date: 2026-07-24
    - Daily agenda also renders action buttons when there are items.
    - Detail card supports `Готово`, `Перенести`, `Удалить` and neutral
      `Отмена`.
+   - Service cards and menus support `Скрыть`, which removes only the Telegram
+     message.
    - Delete from detail reuses recurring scope menu.
    - All-day tasks are shown without a noisy time prefix instead of the
      internal `09:00` materialization anchor.

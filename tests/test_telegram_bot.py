@@ -4,8 +4,14 @@ import logging
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
-from app.adapters.telegram.keyboards import HIDE_NOTIFICATION_PREFIX
-from app.telegram_bot import _deliver_text, _format_version_update_text, configure_logging, hide_notification_callback
+from app.adapters.telegram.keyboards import HIDE_MESSAGE_PREFIX, HIDE_NOTIFICATION_PREFIX
+from app.telegram_bot import (
+    _deliver_text,
+    _format_version_update_text,
+    configure_logging,
+    hide_message_callback,
+    hide_notification_callback,
+)
 
 
 class TelegramBotLoggingTest(TestCase):
@@ -63,6 +69,17 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
         context = FakeContext(owner_id=123)
 
         await hide_notification_callback(update, context)
+
+        self.assertTrue(message.deleted)
+        self.assertEqual(query.answers, [("Скрыто", {})])
+
+    async def test_hide_message_callback_deletes_message(self) -> None:
+        message = FakeDeletableMessage()
+        query = FakeCallbackQuery(data=f"{HIDE_MESSAGE_PREFIX}list", message=message)
+        update = FakeCallbackUpdate(query=query, user_id=123)
+        context = FakeContext(owner_id=123)
+
+        await hide_message_callback(update, context)
 
         self.assertTrue(message.deleted)
         self.assertEqual(query.answers, [("Скрыто", {})])

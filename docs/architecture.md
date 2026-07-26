@@ -139,8 +139,11 @@ row opens an occurrence detail card with:
 - `Перенести`;
 - `Удалить`;
 - `Отмена`.
+- `Скрыть`.
 
 The delete action reuses the scoped deletion model for recurring reminders.
+`Скрыть` is UI-only: it removes the Telegram card and does not change reminder
+state.
 
 All-day tasks may be internally materialized at the default day anchor time
 (`09:00`) so recurrence and notification jobs have a concrete datetime. Telegram

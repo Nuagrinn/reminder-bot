@@ -25,6 +25,7 @@ from app.adapters.telegram.keyboards import (
     DELETE_SERIES_FROM_PREFIX,
     DETAIL_CANCEL_PREFIX,
     DONE_PREFIX,
+    HIDE_MESSAGE_PREFIX,
     HIDE_NOTIFICATION_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     RESCHEDULE_CUSTOM_PREFIX,
@@ -78,6 +79,7 @@ class TelegramFormattersTest(TestCase):
         keyboard = confirmation_keyboard("pending_123")
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{CONFIRM_REMINDER_PREFIX}pending_123")
+        self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{HIDE_MESSAGE_PREFIX}confirmation")
 
     def test_clarification_keyboard_uses_option_indexes(self) -> None:
         keyboard = clarification_keyboard("pending_123", ["сегодня", "завтра", "через час"])
@@ -86,6 +88,7 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[0][1].callback_data, f"{CLARIFY_PREFIX}pending_123:1")
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{CLARIFY_PREFIX}pending_123:2")
         self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{CLARIFY_CANCEL_PREFIX}pending_123")
+        self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{HIDE_MESSAGE_PREFIX}clarification")
 
     def test_clarification_text_hides_machine_reason(self) -> None:
         parse_result = ReminderParseResult(
@@ -129,6 +132,7 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn(f"{DELETE_OCCURRENCE_PREFIX}occ_1", callbacks)
         self.assertIn(f"{DELETE_SERIES_FROM_PREFIX}occ_1", callbacks)
+        self.assertIn(f"{HIDE_MESSAGE_PREFIX}delete", callbacks)
 
     def test_main_keyboard_has_week_and_month(self) -> None:
         labels = [button.text for row in main_keyboard().keyboard for button in row]
@@ -144,6 +148,7 @@ class TelegramFormattersTest(TestCase):
 
         self.assertEqual(enabled_keyboard.inline_keyboard[0][0].callback_data, f"{DAILY_AGENDA_TOGGLE_PREFIX}off")
         self.assertEqual(disabled_keyboard.inline_keyboard[0][0].callback_data, f"{DAILY_AGENDA_TOGGLE_PREFIX}on")
+        self.assertEqual(enabled_keyboard.inline_keyboard[1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}daily_agenda")
 
     def test_occurrence_list_keyboard_uses_numbered_detail_buttons(self) -> None:
         item = occurrence()
@@ -152,6 +157,7 @@ class TelegramFormattersTest(TestCase):
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{OCCURRENCE_DETAIL_PREFIX}occ_1")
         self.assertIn("1.", keyboard.inline_keyboard[0][0].text)
+        self.assertEqual(keyboard.inline_keyboard[-1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}list")
 
     def test_all_day_occurrence_list_hides_internal_nine_am_anchor(self) -> None:
         item = all_day_occurrence()
@@ -196,6 +202,7 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{RESCHEDULE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DETAIL_CANCEL_PREFIX}occ_1")
+        self.assertEqual(keyboard.inline_keyboard[4][0].callback_data, f"{HIDE_MESSAGE_PREFIX}detail")
 
     def test_reschedule_keyboards_have_scope_and_quick_actions(self) -> None:
         scope_keyboard = reschedule_scope_keyboard(occurrence_id="occ_1")
@@ -204,6 +211,8 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(scope_keyboard.inline_keyboard[0][0].callback_data, f"{RESCHEDULE_SCOPE_PREFIX}occ_1:occ")
         self.assertEqual(options_keyboard.inline_keyboard[0][0].callback_data, f"{RESCHEDULE_QUICK_PREFIX}occ_1:series:plus_1h")
         self.assertEqual(options_keyboard.inline_keyboard[3][0].callback_data, f"{RESCHEDULE_CUSTOM_PREFIX}occ_1:series")
+        self.assertEqual(scope_keyboard.inline_keyboard[-1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}reschedule_scope")
+        self.assertEqual(options_keyboard.inline_keyboard[-1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}reschedule_options")
 
     def test_reschedule_texts_show_current_and_new_time(self) -> None:
         menu = format_reschedule_menu(occurrence(), scope="occ")

@@ -9,6 +9,8 @@ from app.adapters.telegram.occurrence_labels import job_when_label
 from app.adapters.telegram.occurrence_labels import compact_time_prefix
 from app.adapters.telegram.occurrence_labels import occurrence_when_label
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
+from app.adapters.telegram.occurrence_list_view import annual_day_label
+from app.adapters.telegram.occurrence_list_view import occurrence_group_key
 from app.adapters.telegram.occurrence_list_view import occurrence_group_label
 from app.adapters.telegram.occurrence_list_view import occurrence_list_header
 from app.features.events.models import NotificationJobView, OccurrenceView
@@ -93,17 +95,14 @@ def format_occurrence_list_view(view: OccurrenceListView) -> str:
         )
     lines.append("")
 
-    current_date: date | None = None
+    current_group: date | tuple[int, int] | None = None
     for index, item in enumerate(view.page_items, start=1):
         item_date = item.occurs_at.date()
-        if not view.suppress_single_day_group and item_date != current_date:
-            current_date = item_date
+        group_key = occurrence_group_key(item, view)
+        if not view.suppress_single_day_group and group_key != current_group:
+            current_group = group_key
             lines.append(f"<b>{h(occurrence_group_label(item_date, view))}</b>")
-        time_label = compact_time_prefix(item)
-        if time_label:
-            lines.append(f"<b>{index}.</b> <code>{h(time_label)}</code> · {h(item.title)}")
-        else:
-            lines.append(f"<b>{index}.</b> {h(item.title)}")
+        lines.append(_format_occurrence_list_row(index, item, view))
     return "\n".join(lines)
 
 
@@ -263,6 +262,13 @@ def format_snoozed(minutes: int) -> str:
 
 def _date_time_label(value: datetime) -> str:
     return value.strftime("%d.%m.%Y %H:%M")
+
+
+def _format_occurrence_list_row(index: int, item: OccurrenceView, view: OccurrenceListView) -> str:
+    marker = annual_day_label(item) if view.kind == "annual" else compact_time_prefix(item)
+    marker_width = 5
+    cell = f"{index} {marker:<{marker_width}}"
+    return f"<code>{h(cell)}</code> {h(item.title)}"
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:

@@ -667,6 +667,37 @@ Date: 2026-07-24
 - Added regression tests for compact and native date-only relative-delay
   payloads.
 
+## Mobile Occurrence List UX
+
+- Refined the compact occurrence list renderer after mobile testing in
+  Telegram.
+- Problem:
+  - rows like `4. утро · Подключить Spotify подписку` were compact, but the
+    time label and title visually merged on a phone screen;
+  - rows without time had no stable left column, so the list looked uneven.
+- New row shape:
+  - each row starts with a fixed-width `<code>` cell;
+  - the cell contains the visible row number and, when present, exact time or
+    broad time label;
+  - tasks without time keep an empty time slot instead of showing noisy
+    placeholders.
+- Examples:
+  - `1       Купить кофе во вкусвеле`;
+  - `4 утро  Подключить Spotify подписку`;
+  - `6 17:01 Замариновать курицу`.
+- Annual list UX:
+  - `/annual` now groups events by month;
+  - month headings include the year when the next annual occurrence is in
+    another year;
+  - annual rows show compact day + weekday labels, for example
+    `11 Вт День рождения Виталика`.
+- Added formatter regression tests for:
+  - table-like rows without internal `09:00`;
+  - broad time words inside the left cell;
+  - annual month grouping;
+  - multiple annual events under one month heading;
+  - page 2 row numbering with the new row format.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

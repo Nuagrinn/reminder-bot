@@ -168,7 +168,7 @@ class TelegramFormattersTest(TestCase):
         text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
         keyboard = occurrence_list_keyboard(list_view([item], anchor_date=date(2026, 7, 24)))
 
-        self.assertIn("<b>1.</b> Закинуть наличку на карту", text)
+        self.assertIn("<code>1      </code> Закинуть наличку на карту", text)
         self.assertNotIn("<code>день</code>", text)
         self.assertNotIn("09:00", text)
         self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
@@ -193,7 +193,7 @@ class TelegramFormattersTest(TestCase):
         detail = format_occurrence_detail(item)
         keyboard = occurrence_list_keyboard(list_view([item], anchor_date=date(2026, 7, 25)))
 
-        self.assertIn("<code>утро</code>", text)
+        self.assertIn("<code>1 утро </code> Прибить дощечку на кухне", text)
         self.assertNotIn("09:00", text)
         self.assertIn("25.07.2026, утром", detail)
         self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
@@ -218,17 +218,32 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn("<b>Сегодня · Вс 26.07</b>", text)
         self.assertNotIn("<b>Вс 26.07 · сегодня</b>", text)
-        self.assertIn("<b>1.</b> Помыть машину", text)
+        self.assertIn("<code>1      </code> Помыть машину", text)
 
-    def test_annual_list_forces_year_in_date_group(self) -> None:
+    def test_annual_list_groups_events_by_month(self) -> None:
         anchor = date(2026, 7, 26)
         item = occurrence_at("occ_6", "День рождения Виталика", datetime(2027, 5, 11, 9, 0), all_day=True)
         view = list_view([item], kind="annual", title="Ежегодные", anchor_date=anchor, force_year=True)
 
         text = format_occurrence_list_view(view)
 
-        self.assertIn("<b>11.05.2027 · Вт</b>", text)
-        self.assertIn("День рождения Виталика", text)
+        self.assertIn("<b>Май 2027</b>", text)
+        self.assertIn("<code>1 11 Вт</code> День рождения Виталика", text)
+        self.assertNotIn("<b>11.05.2027 · Вт</b>", text)
+
+    def test_annual_list_keeps_multiple_events_under_month_heading(self) -> None:
+        anchor = date(2026, 7, 26)
+        items = [
+            occurrence_at("occ_7", "День рождения Виталика", datetime(2027, 5, 11, 9, 0), all_day=True),
+            occurrence_at("occ_8", "Годовщина", datetime(2027, 5, 28, 9, 0), all_day=True),
+        ]
+        view = list_view(items, kind="annual", title="Ежегодные", anchor_date=anchor, force_year=True)
+
+        text = format_occurrence_list_view(view)
+
+        self.assertEqual(text.count("<b>Май 2027</b>"), 1)
+        self.assertIn("<code>1 11 Вт</code> День рождения Виталика", text)
+        self.assertIn("<code>2 28 Пт</code> Годовщина", text)
 
     def test_occurrence_list_keyboard_uses_numeric_rows_and_pagination(self) -> None:
         anchor = date(2026, 7, 26)
@@ -260,7 +275,7 @@ class TelegramFormattersTest(TestCase):
         keyboard = occurrence_list_keyboard(view)
 
         self.assertIn("Показано: <b>11-12</b> из <b>12</b>", text)
-        self.assertIn("<b>1.</b> Событие 11", text)
+        self.assertIn("<code>1      </code> Событие 11", text)
         self.assertEqual([button.text for button in keyboard.inline_keyboard[0]], ["1", "2"])
         self.assertEqual(keyboard.inline_keyboard[1][1].text, "2/2")
 

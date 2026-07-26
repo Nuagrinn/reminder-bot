@@ -9,6 +9,20 @@ from app.features.events.models import OccurrenceView
 
 DEFAULT_LIST_PAGE_SIZE = 10
 WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+MONTH_LABELS = (
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +106,12 @@ def occurrence_list_header(view: OccurrenceListView) -> str:
 
 
 def occurrence_group_label(value: date, view: OccurrenceListView) -> str:
+    if view.kind == "annual":
+        label = MONTH_LABELS[value.month - 1]
+        if view.show_year:
+            label = f"{label} {value.year}"
+        return label
+
     if view.show_year:
         label = f"{value:%d.%m.%Y} · {weekday_label(value)}"
     else:
@@ -105,6 +125,18 @@ def occurrence_group_label(value: date, view: OccurrenceListView) -> str:
 
 def weekday_label(value: date) -> str:
     return WEEKDAY_LABELS[value.weekday()]
+
+
+def occurrence_group_key(item: OccurrenceView, view: OccurrenceListView) -> tuple[int, int] | date:
+    item_date = item.occurs_at.date()
+    if view.kind == "annual":
+        return (item_date.year, item_date.month)
+    return item_date
+
+
+def annual_day_label(item: OccurrenceView) -> str:
+    value = item.occurs_at.date()
+    return f"{value.day:02d} {weekday_label(value)}"
 
 
 def relative_day_label(value: date, *, anchor_date: date) -> str:

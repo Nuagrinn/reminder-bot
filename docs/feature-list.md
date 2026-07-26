@@ -73,9 +73,13 @@ Date: 2026-07-24
      internal `09:00` materialization anchor.
    - Broad source phrases like `утром` / `вечером` are shown as human labels,
      while exact user-provided clock times remain `HH:MM`.
+   - List rows use a compact table-like left cell:
+     number + time/part-of-day, then the title as normal text.
    - `Ежегодные` is a semantic annual-series view, not a long month range:
      it shows the next occurrence of yearly events and materializes it when it
      is beyond the normal 180-day horizon.
+   - Annual lists are grouped by month, for example `Май 2027`, with rows like
+     `11 Вт День рождения`.
 
 7. Reschedule reminders - done
    - One-off reminders can be moved from the detail card.

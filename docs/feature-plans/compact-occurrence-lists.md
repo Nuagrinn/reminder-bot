@@ -239,6 +239,57 @@ builds the view parameters.
 Status: all MVP steps are done. `format_occurrence_list(items, title,
 empty_text)` remains as a compatibility wrapper around the new renderer.
 
+## Mobile Table Refinement
+
+Implemented on 2026-07-26.
+
+The first compact MVP was readable on desktop, but on mobile the event title
+was visually glued to the time label:
+
+```text
+4. утро · Подключить Spotify подписку
+6. 17:01 · Замариновать курицу
+```
+
+The renderer now uses a small fixed-width left cell for every row:
+
+```text
+Сегодня · Вс 26.07
+Всего: 6
+
+1       Купить кофе во вкусвеле
+2       помыть машину
+4 утро  Подключить Spotify подписку
+6 17:01 Замариновать курицу
+```
+
+In Telegram this left cell is rendered as `<code>...</code>`, so the number and
+time/part-of-day column reads like a compact table while the title stays normal
+text.
+
+Rules:
+
+- exact time uses `HH:MM`;
+- broad source phrases use `утро`, `день`, `вечер`, `ночь`;
+- all-day tasks without a source time keep an empty time cell instead of noisy
+  labels like `день` or internal anchors like `09:00`;
+- numeric inline buttons still map to visible row numbers.
+
+Annual lists now group rows by month instead of showing a date heading for each
+event:
+
+```text
+Ежегодные
+Всего: 2
+
+Май 2027
+1 11 Вт День рождения Виталика
+2 28 Пт Годовщина
+```
+
+This keeps `/annual` as a semantic calendar-like view for birthdays and yearly
+dates, not just another long chronological occurrence list.
+
 ## Open Questions
 
 - Should `/month` default to day-summary first when there are more than 10

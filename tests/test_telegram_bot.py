@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 from app.adapters.telegram.keyboards import HIDE_MESSAGE_PREFIX, HIDE_NOTIFICATION_PREFIX
+from app.adapters.telegram.keyboards import LIST_PAGE_PREFIX, OCCURRENCE_DETAIL_PREFIX
+from app.features.events.models import OccurrenceView
 from app.telegram_bot import (
+    _build_occurrence_list_view,
     _deliver_text,
     _format_version_update_text,
     configure_logging,
     hide_message_callback,
     hide_notification_callback,
+    list_page_callback,
+    occurrence_detail_callback,
 )
 
 
@@ -84,6 +90,49 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
         self.assertTrue(message.deleted)
         self.assertEqual(query.answers, [("Скрыто", {})])
 
+    async def test_occurrence_detail_stale_click_shows_refresh_hint(self) -> None:
+        message = FakeDeletableMessage()
+        query = FakeCallbackQuery(data=f"{OCCURRENCE_DETAIL_PREFIX}missing", message=message)
+        update = FakeCallbackUpdate(query=query, user_id=123)
+        context = FakeContext(owner_id=123, services=FakeServices(items=[]))
+
+        await occurrence_detail_callback(update, context)
+
+        self.assertEqual(query.answers, [("Не нашел это напоминание. Обнови список.", {"show_alert": True})])
+        self.assertEqual(message.edits, [])
+
+    async def test_list_page_callback_edits_same_card(self) -> None:
+        items = [
+            fake_occurrence(f"occ_{index}", f"Событие {index}", datetime(2026, 7, 26, 9, index))
+            for index in range(1, 13)
+        ]
+        message = FakeDeletableMessage()
+        query = FakeCallbackQuery(data=f"{LIST_PAGE_PREFIX}week:20260726:1", message=message)
+        update = FakeCallbackUpdate(query=query, user_id=123)
+        context = FakeContext(owner_id=123, services=FakeServices(items=items))
+
+        await list_page_callback(update, context)
+
+        self.assertEqual(query.answers, [("", {})])
+        edit_text, kwargs = message.edits[0]
+        self.assertIn("Показано: <b>11-12</b> из <b>12</b>", edit_text)
+        self.assertEqual([button.text for button in kwargs["reply_markup"].inline_keyboard[0]], ["1", "2"])
+
+    async def test_occurrence_list_builder_supports_all_entry_kinds(self) -> None:
+        now = datetime(2026, 7, 26, 12, 0)
+        services = FakeServices(
+            items=[fake_occurrence("occ_1", "Сегодня", datetime(2026, 7, 26, 9, 0))],
+            annual_items=[fake_occurrence("occ_2", "День рождения", datetime(2027, 5, 11, 9, 0))],
+        )
+
+        views = [
+            await _build_occurrence_list_view(services, kind=kind, now=now)
+            for kind in ("today", "week", "month", "upcoming", "agenda", "annual")
+        ]
+
+        self.assertEqual([view.kind for view in views], ["today", "week", "month", "upcoming", "agenda", "annual"])
+        self.assertTrue(all(view.page_size == 10 for view in views))
+
 
 class FakeUpdate:
     def __init__(self, *, message=None):
@@ -104,13 +153,16 @@ class FakeUser:
 
 
 class FakeContext:
-    def __init__(self, *, owner_id: int):
-        self.application = FakeApplication(owner_id=owner_id)
+    def __init__(self, *, owner_id: int, services=None):
+        self.application = FakeApplication(owner_id=owner_id, services=services)
+        self.user_data = {}
 
 
 class FakeApplication:
-    def __init__(self, *, owner_id: int):
+    def __init__(self, *, owner_id: int, services=None):
         self.bot_data = {"owner_id": owner_id}
+        if services is not None:
+            self.bot_data["services"] = services
 
 
 class FakeCallbackQuery:
@@ -154,3 +206,57 @@ class FakeReplyMessage:
 
     async def reply_text(self, text: str, **kwargs) -> None:
         self.replies.append((text, kwargs))
+
+
+class FakeServices:
+    def __init__(self, *, items: list[OccurrenceView], annual_items: list[OccurrenceView] | None = None):
+        self.settings = FakeSettings()
+        self.events = FakeEvents(items=items, annual_items=annual_items or [])
+
+
+class FakeSettings:
+    timezone = "Europe/Moscow"
+    daily_agenda_limit = 50
+
+
+class FakeDefaults:
+    materialize_days = 180
+
+
+class FakeEvents:
+    def __init__(self, *, items: list[OccurrenceView], annual_items: list[OccurrenceView]):
+        self.items = items
+        self.annual_items = annual_items
+        self.defaults = FakeDefaults()
+
+    def materialize_all(self, *, now: datetime) -> int:
+        return len(self.items)
+
+    def list_occurrences(self, *, start_at: datetime, end_at: datetime, limit: int = 50) -> list[OccurrenceView]:
+        items = [item for item in self.items if start_at <= item.occurs_at <= end_at]
+        return sorted(items, key=lambda item: item.occurs_at)[:limit]
+
+    def annual_occurrences(self, *, now: datetime, limit: int = 100) -> list[OccurrenceView]:
+        return self.annual_items[:limit]
+
+    def get_occurrence(self, occurrence_id: str) -> OccurrenceView:
+        for item in self.items:
+            if item.occurrence_id == occurrence_id:
+                return item
+        raise ValueError(f"Occurrence not found: {occurrence_id}")
+
+
+def fake_occurrence(occurrence_id: str, title: str, occurs_at: datetime) -> OccurrenceView:
+    return OccurrenceView(
+        occurrence_id=occurrence_id,
+        event_id=f"evt_{occurrence_id}",
+        title=title,
+        description="",
+        event_type="task",
+        occurs_at=occurs_at,
+        occurrence_date=occurs_at.date().isoformat(),
+        occurrence_status="scheduled",
+        event_status="active",
+        next_notify_at=None,
+        all_day=True,
+    )

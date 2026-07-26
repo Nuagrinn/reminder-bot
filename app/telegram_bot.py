@@ -5,7 +5,7 @@ import html
 import logging
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from time import perf_counter
 from zoneinfo import ZoneInfo
@@ -27,7 +27,6 @@ from assistant_toolkit.telegram import split_message
 from app.adapters.telegram.formatters import (
     format_action_cancelled,
     format_done,
-    format_daily_agenda,
     format_daily_agenda_settings,
     format_daily_agenda_toggled,
     format_delete_cancelled,
@@ -36,7 +35,7 @@ from app.adapters.telegram.formatters import (
     format_event_deleted,
     format_intake_result,
     format_occurrence_detail,
-    format_occurrence_list,
+    format_occurrence_list_view,
     format_occurrence_deleted,
     format_parse_confirmation,
     format_reschedule_custom_prompt,
@@ -64,6 +63,7 @@ from app.adapters.telegram.keyboards import (
     DONE_PREFIX,
     HIDE_MESSAGE_PREFIX,
     HIDE_NOTIFICATION_PREFIX,
+    LIST_PAGE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     RESCHEDULE_CANCEL_PREFIX,
     RESCHEDULE_CUSTOM_PREFIX,
@@ -82,6 +82,8 @@ from app.adapters.telegram.keyboards import (
     reschedule_options_keyboard,
     reschedule_scope_keyboard,
 )
+from app.adapters.telegram.occurrence_list_view import DEFAULT_LIST_PAGE_SIZE
+from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.config import PROJECT_ROOT, Settings, load_settings
 from app.core.ids import new_id
 from app.core.time import local_now
@@ -241,33 +243,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Сегодня", days=1, empty_text="На сегодня событий нет.")
+    await _show_occurrence_list(update, context, kind="today")
 
 
 async def week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Неделя", days=7, empty_text="На неделю событий нет.")
+    await _show_occurrence_list(update, context, kind="week")
 
 
 async def month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _show_range(update, context, title="Месяц", days=31, empty_text="На месяц событий нет.", limit=100)
+    await _show_occurrence_list(update, context, kind="month")
 
 
 async def annual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    services = _services(context)
-    now = local_now(services.settings.timezone)
-    items = await asyncio.to_thread(services.events.annual_occurrences, now=now, limit=100)
-    await _answer_long(
-        update,
-        format_occurrence_list(items, title="Ежегодные", empty_text="Ежегодных событий нет."),
-        parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
-    )
+    await _show_occurrence_list(update, context, kind="annual")
 
 
 async def daily_agenda_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -283,39 +277,27 @@ async def daily_agenda_settings(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-async def _show_range(
+async def _show_occurrence_list(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     *,
-    title: str,
-    days: int,
-    empty_text: str,
-    limit: int = 50,
+    kind: str,
 ) -> None:
     services = _services(context)
     now = local_now(services.settings.timezone)
-    items = await _occurrences_for_range(services, now=now, days=days, limit=limit)
+    view = await _build_occurrence_list_view(services, kind=kind, now=now)
     await _answer_long(
         update,
-        format_occurrence_list(items, title=title, empty_text=empty_text),
+        format_occurrence_list_view(view),
         parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
+        reply_markup=occurrence_list_keyboard(view) if view.items else main_keyboard(),
     )
 
 
 async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    services = _services(context)
-    now = local_now(services.settings.timezone)
-    await asyncio.to_thread(services.events.materialize_all, now=now)
-    items = await asyncio.to_thread(services.events.upcoming, now=now, limit=20)
-    await _answer_long(
-        update,
-        format_occurrence_list(items, title="Ближайшие", empty_text="Ближайших событий нет."),
-        parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
-    )
+    await _show_occurrence_list(update, context, kind="upcoming")
 
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -645,16 +627,100 @@ def _short_log_text(value: str, limit: int = 160) -> str:
     return f"{text[: limit - 3]}..."
 
 
+async def _build_occurrence_list_view(
+    services: AppServices,
+    *,
+    kind: str,
+    now: datetime,
+    page: int = 0,
+    anchor_date: date | None = None,
+) -> OccurrenceListView:
+    anchor = anchor_date or now.date()
+    if kind == "annual":
+        items = await asyncio.to_thread(services.events.annual_occurrences, now=now, limit=100)
+        return OccurrenceListView(
+            kind=kind,
+            title="Ежегодные",
+            empty_text="Ежегодных событий нет.",
+            anchor_date=anchor,
+            items=items,
+            page=page,
+            page_size=DEFAULT_LIST_PAGE_SIZE,
+            force_year=True,
+        )
+
+    if kind == "upcoming":
+        days = services.events.defaults.materialize_days
+        await asyncio.to_thread(services.events.materialize_all, now=now)
+        items = await _occurrences_for_range(
+            services,
+            now=now,
+            days=days,
+            limit=100,
+            anchor_date=anchor,
+            materialize=False,
+        )
+        return OccurrenceListView(
+            kind=kind,
+            title="Ближайшие",
+            empty_text="Ближайших событий нет.",
+            anchor_date=anchor,
+            items=items,
+            range_start=anchor,
+            range_end=anchor + timedelta(days=days),
+            page=page,
+            page_size=DEFAULT_LIST_PAGE_SIZE,
+        )
+
+    range_configs = {
+        "today": ("Сегодня", 1, "На сегодня событий нет.", 100),
+        "week": ("Неделя", 7, "На неделю событий нет.", 100),
+        "month": ("Месяц", 31, "На месяц событий нет.", 100),
+        "agenda": (
+            "План на сегодня",
+            1,
+            "Доброе утро. На сегодня событий нет.",
+            services.settings.daily_agenda_limit,
+        ),
+    }
+    if kind not in range_configs:
+        raise ValueError(f"Unknown occurrence list kind: {kind}")
+
+    title, days, empty_text, limit = range_configs[kind]
+    items = await _occurrences_for_range(
+        services,
+        now=now,
+        days=days,
+        limit=limit,
+        anchor_date=anchor,
+    )
+    return OccurrenceListView(
+        kind=kind,
+        title=title,
+        empty_text=empty_text,
+        anchor_date=anchor,
+        items=items,
+        range_start=anchor,
+        range_end=anchor + timedelta(days=days),
+        page=page,
+        page_size=DEFAULT_LIST_PAGE_SIZE,
+    )
+
+
 async def _occurrences_for_range(
     services: AppServices,
     *,
     now: datetime,
     days: int,
     limit: int,
+    anchor_date: date | None = None,
+    materialize: bool = True,
 ):
-    start_at = datetime.combine(now.date(), datetime.min.time())
-    end_at = start_at + timedelta(days=days)
-    await asyncio.to_thread(services.events.materialize_all, now=now)
+    start_date = anchor_date or now.date()
+    start_at = datetime.combine(start_date, time.min)
+    end_at = start_at + timedelta(days=days) - timedelta(seconds=1)
+    if materialize:
+        await asyncio.to_thread(services.events.materialize_all, now=now)
     return await asyncio.to_thread(
         services.events.list_occurrences,
         start_at=start_at,
@@ -696,18 +762,13 @@ async def send_daily_agenda(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not services.app_settings.is_daily_agenda_enabled(default=services.settings.daily_agenda_enabled):
         log.info("Daily agenda skipped: disabled")
         return
-    items = await _occurrences_for_range(
-        services,
-        now=now,
-        days=1,
-        limit=services.settings.daily_agenda_limit,
-    )
+    view = await _build_occurrence_list_view(services, kind="agenda", now=now)
     try:
         await context.bot.send_message(
             chat_id=owner_id,
-            text=format_daily_agenda(items),
+            text=format_occurrence_list_view(view),
             parse_mode=ParseMode.HTML,
-            reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
+            reply_markup=occurrence_list_keyboard(view) if view.items else main_keyboard(),
         )
     except Exception:
         log.exception("Failed to send daily agenda")
@@ -794,6 +855,37 @@ async def hide_message_callback(update: Update, context: ContextTypes.DEFAULT_TY
         log.warning("Failed to edit hidden Telegram card scope=%s", scope, exc_info=True)
 
 
+async def list_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(LIST_PAGE_PREFIX)
+    try:
+        kind, raw_anchor_date, raw_page = payload.split(":", 2)
+        anchor = datetime.strptime(raw_anchor_date, "%Y%m%d").date()
+        page = int(raw_page)
+    except ValueError:
+        log.warning("Invalid occurrence list page callback payload=%r", payload)
+        await query.answer("Не смог открыть страницу", show_alert=True)
+        return
+
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        view = await _build_occurrence_list_view(services, kind=kind, now=now, page=page, anchor_date=anchor)
+    except ValueError:
+        log.warning("Unknown occurrence list kind in callback kind=%r", kind)
+        await query.answer("Не смог открыть страницу", show_alert=True)
+        return
+
+    await query.answer()
+    await query.edit_message_text(
+        format_occurrence_list_view(view),
+        parse_mode=ParseMode.HTML,
+        reply_markup=occurrence_list_keyboard(view),
+    )
+
+
 async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -802,9 +894,13 @@ async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAU
     services = _services(context)
     try:
         occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+    except ValueError:
+        log.info("Occurrence detail stale occurrence_id=%s", occurrence_id)
+        await query.answer("Не нашел это напоминание. Обнови список.", show_alert=True)
+        return
     except Exception:
         log.exception("Occurrence detail failed")
-        await query.answer("Не нашел напоминание", show_alert=True)
+        await query.answer("Не нашел это напоминание. Обнови список.", show_alert=True)
         return
     await query.answer()
     await query.edit_message_text(
@@ -1215,6 +1311,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(clarify_callback, pattern=f"^{CLARIFY_PREFIX}"))
     app.add_handler(CallbackQueryHandler(clarify_cancel_callback, pattern=f"^{CLARIFY_CANCEL_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(list_page_callback, pattern=f"^{LIST_PAGE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(detail_cancel_callback, pattern=f"^{DETAIL_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(daily_agenda_toggle_callback, pattern=f"^{DAILY_AGENDA_TOGGLE_PREFIX}"))

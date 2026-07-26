@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
-from app.adapters.telegram.occurrence_labels import occurrence_button_label
+from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.features.events.models import NotificationJobView
-from app.features.events.models import OccurrenceView
 
 
 DONE_PREFIX = "done:"
 OCCURRENCE_DETAIL_PREFIX = "occ_detail:"
+LIST_PAGE_PREFIX = "list_page:"
 SNOOZE_PREFIX = "snooze:"
 HIDE_NOTIFICATION_PREFIX = "hide_notification:"
 HIDE_MESSAGE_PREFIX = "hide_message:"
@@ -88,17 +88,23 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
     )
 
 
-def occurrence_list_keyboard(items: list[OccurrenceView]) -> InlineKeyboardMarkup:
+def occurrence_list_keyboard(view: OccurrenceListView) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    for index, item in enumerate(items[:100], start=1):
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    occurrence_button_label(index, item),
-                    callback_data=f"{OCCURRENCE_DETAIL_PREFIX}{item.occurrence_id}",
-                )
-            ]
+    row: list[InlineKeyboardButton] = []
+    for index, item in enumerate(view.page_items, start=1):
+        row.append(
+            InlineKeyboardButton(
+                str(index),
+                callback_data=f"{OCCURRENCE_DETAIL_PREFIX}{item.occurrence_id}",
+            )
         )
+        if len(row) == 5:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    if view.total_pages > 1:
+        rows.append(_occurrence_list_pagination_row(view))
     rows.append(_hide_row("list"))
     return InlineKeyboardMarkup(rows)
 
@@ -171,6 +177,24 @@ def daily_agenda_settings_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
 
 def _hide_row(scope: str) -> list[InlineKeyboardButton]:
     return [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_MESSAGE_PREFIX}{scope}")]
+
+
+def _occurrence_list_pagination_row(view: OccurrenceListView) -> list[InlineKeyboardButton]:
+    current_page = view.current_page
+    previous_page = max(0, current_page - 1)
+    next_page = min(view.total_pages - 1, current_page + 1)
+    return [
+        InlineKeyboardButton("←", callback_data=_occurrence_page_callback(view, previous_page)),
+        InlineKeyboardButton(
+            f"{current_page + 1}/{view.total_pages}",
+            callback_data=_occurrence_page_callback(view, current_page),
+        ),
+        InlineKeyboardButton("→", callback_data=_occurrence_page_callback(view, next_page)),
+    ]
+
+
+def _occurrence_page_callback(view: OccurrenceListView, page: int) -> str:
+    return f"{LIST_PAGE_PREFIX}{view.kind}:{view.anchor_date:%Y%m%d}:{page}"
 
 
 def _clarification_button_label(option: str) -> str:

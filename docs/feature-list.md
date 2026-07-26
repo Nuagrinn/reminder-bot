@@ -59,9 +59,11 @@ Date: 2026-07-24
    - `recurrence.until` is respected by the recurrence engine.
 
 6. List detail/actions - done
-   - `/today`, `/week`, `/month`, `/upcoming`, `/annual` render numbered
-     action buttons.
+   - `/today`, `/week`, `/month`, `/upcoming`, `/annual` render compact paged
+     lists with numeric action buttons.
    - Daily agenda also renders action buttons when there are items.
+   - List buttons show only row numbers; reminder text stays in the message.
+   - Pages use 10 visible rows and compact pagination buttons.
    - Detail card supports `Готово`, `Перенести`, `Удалить` and neutral
      `Отмена`.
    - Service cards and menus support `Скрыть`, which removes only the Telegram
@@ -147,15 +149,15 @@ Date: 2026-07-24
 
 ## Recommended Next Order
 
-1. Implement compact occurrence lists MVP:
-   [plan](feature-plans/compact-occurrence-lists.md).
-2. Run the bot in Telegram with Claude enabled and collect real phrases that
+1. Run the bot in Telegram with Claude enabled and collect real phrases that
    parse poorly.
-3. Add edit controls on the confirmation screen for reminder pattern:
+2. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
-4. Improve clarification UX after real usage:
+3. Improve clarification UX after real usage:
    - add custom date/time entry from button;
    - optionally add richer option generation from Claude.
+4. Revisit Rich Messages as a second renderer once the Python Telegram library
+   supports them or after a small raw Bot API experiment.
 
 ## P1 - Near Next
 
@@ -167,7 +169,7 @@ Date: 2026-07-24
      - cancel.
 
 2. Better list UX
-   - Compact paged list plan:
+   - Compact paged list MVP is implemented:
      [Compact Occurrence Lists UX](feature-plans/compact-occurrence-lists.md).
    - Optional back button from detail to the previous list.
    - Optional snooze from list detail when there is a pending job.

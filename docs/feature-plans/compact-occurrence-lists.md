@@ -1,7 +1,7 @@
 # Compact Occurrence Lists UX
 
 Date: 2026-07-26
-Status: planned MVP
+Status: implemented MVP
 
 ## Problem
 
@@ -27,6 +27,47 @@ Use one unified compact format for all occurrence list outputs:
 
 The message text remains the readable source of truth. Inline buttons become
 short numeric actions only.
+
+## Implemented MVP
+
+Implemented on 2026-07-26.
+
+Technical shape:
+
+- Added `OccurrenceListView` in `app/adapters/telegram/occurrence_list_view.py`.
+- Added one renderer: `format_occurrence_list_view(view)`.
+- Added one keyboard builder: `occurrence_list_keyboard(view)`.
+- Added `LIST_PAGE_PREFIX=list_page:` callback for pagination.
+- Kept `OCCURRENCE_DETAIL_PREFIX=occ_detail:` for item buttons.
+- Telegram commands now only choose the list kind:
+  - `today`;
+  - `week`;
+  - `month`;
+  - `upcoming`;
+  - `annual`;
+  - `agenda`.
+- The list callback stores only stable metadata:
+  - kind;
+  - anchor date as `YYYYMMDD`;
+  - page index.
+- Occurrence ids are still stored only in visible numeric item buttons.
+
+The current MVP intentionally stays on standard Telegram HTML text plus inline
+keyboard buttons. Rich Messages can later become a second renderer fed by the
+same `OccurrenceListView`.
+
+Tested cases:
+
+- short date and weekday labels without current year;
+- year labels for annual/next-year occurrences;
+- day view without duplicate date group;
+- all-day reminders without internal `09:00`;
+- broad time phrases as `утро`, `день`, `вечер`, `ночь`;
+- numeric buttons in rows of five;
+- pagination row `[←] [1/2] [→]`;
+- page 2 uses visible row numbers `1`, `2`, ... instead of global indexes;
+- stale occurrence click shows `Не нашел это напоминание. Обнови список.`;
+- all list entry kinds build the same view model.
 
 ## Message Format
 
@@ -194,6 +235,9 @@ builds the view parameters.
    - pagination buttons;
    - stale occurrence click;
    - all list entry points using the same formatter.
+
+Status: all MVP steps are done. `format_occurrence_list(items, title,
+empty_text)` remains as a compatibility wrapper around the new renderer.
 
 ## Open Questions
 

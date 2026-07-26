@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from unittest import TestCase
 
 from app.adapters.telegram.formatters import (
@@ -11,6 +11,7 @@ from app.adapters.telegram.formatters import (
     format_due_notification,
     format_occurrence_detail,
     format_occurrence_list,
+    format_occurrence_list_view,
     format_parse_confirmation,
     format_reschedule_menu,
     format_rescheduled,
@@ -27,6 +28,7 @@ from app.adapters.telegram.keyboards import (
     DONE_PREFIX,
     HIDE_MESSAGE_PREFIX,
     HIDE_NOTIFICATION_PREFIX,
+    LIST_PAGE_PREFIX,
     OCCURRENCE_DETAIL_PREFIX,
     RESCHEDULE_CUSTOM_PREFIX,
     RESCHEDULE_MENU_PREFIX,
@@ -44,6 +46,7 @@ from app.adapters.telegram.keyboards import (
     reschedule_options_keyboard,
     reschedule_scope_keyboard,
 )
+from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import NotificationJobView, OccurrenceView
@@ -153,22 +156,22 @@ class TelegramFormattersTest(TestCase):
     def test_occurrence_list_keyboard_uses_numbered_detail_buttons(self) -> None:
         item = occurrence()
 
-        keyboard = occurrence_list_keyboard([item])
+        keyboard = occurrence_list_keyboard(list_view([item]))
 
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{OCCURRENCE_DETAIL_PREFIX}occ_1")
-        self.assertIn("1.", keyboard.inline_keyboard[0][0].text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
         self.assertEqual(keyboard.inline_keyboard[-1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}list")
 
     def test_all_day_occurrence_list_hides_internal_nine_am_anchor(self) -> None:
         item = all_day_occurrence()
 
         text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
-        keyboard = occurrence_list_keyboard([item])
+        keyboard = occurrence_list_keyboard(list_view([item], anchor_date=date(2026, 7, 24)))
 
         self.assertIn("<b>1.</b> Закинуть наличку на карту", text)
         self.assertNotIn("<code>день</code>", text)
         self.assertNotIn("09:00", text)
-        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1. Закинуть наличку на карту")
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
 
     def test_broad_time_word_is_shown_instead_of_internal_clock_anchor(self) -> None:
         item = OccurrenceView(
@@ -188,12 +191,78 @@ class TelegramFormattersTest(TestCase):
 
         text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
         detail = format_occurrence_detail(item)
-        keyboard = occurrence_list_keyboard([item])
+        keyboard = occurrence_list_keyboard(list_view([item], anchor_date=date(2026, 7, 25)))
 
-        self.assertIn("<code>утром</code>", text)
+        self.assertIn("<code>утро</code>", text)
         self.assertNotIn("09:00", text)
         self.assertIn("25.07.2026, утром", detail)
-        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1. утром · Прибить дощечку на кухне")
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
+
+    def test_compact_week_list_shows_short_header_and_weekday_group(self) -> None:
+        anchor = date(2026, 7, 26)
+        item = occurrence_at("occ_4", "Приделать дощечку на кухне", datetime(2026, 7, 26, 9, 0), all_day=True)
+        view = list_view([item], kind="week", title="Неделя", anchor_date=anchor, days=7)
+
+        text = format_occurrence_list_view(view)
+
+        self.assertIn("<b>Неделя · 26.07-01.08</b>", text)
+        self.assertIn("<b>Вс 26.07 · сегодня</b>", text)
+        self.assertNotIn("26.07.2026", text)
+
+    def test_today_list_keeps_weekday_in_header_without_duplicate_date_group(self) -> None:
+        anchor = date(2026, 7, 26)
+        item = occurrence_at("occ_5", "Помыть машину", datetime(2026, 7, 26, 9, 0), all_day=True)
+        view = list_view([item], kind="today", title="Сегодня", anchor_date=anchor, days=1)
+
+        text = format_occurrence_list_view(view)
+
+        self.assertIn("<b>Сегодня · Вс 26.07</b>", text)
+        self.assertNotIn("<b>Вс 26.07 · сегодня</b>", text)
+        self.assertIn("<b>1.</b> Помыть машину", text)
+
+    def test_annual_list_forces_year_in_date_group(self) -> None:
+        anchor = date(2026, 7, 26)
+        item = occurrence_at("occ_6", "День рождения Виталика", datetime(2027, 5, 11, 9, 0), all_day=True)
+        view = list_view([item], kind="annual", title="Ежегодные", anchor_date=anchor, force_year=True)
+
+        text = format_occurrence_list_view(view)
+
+        self.assertIn("<b>11.05.2027 · Вт</b>", text)
+        self.assertIn("День рождения Виталика", text)
+
+    def test_occurrence_list_keyboard_uses_numeric_rows_and_pagination(self) -> None:
+        anchor = date(2026, 7, 26)
+        items = [
+            occurrence_at(f"occ_page_{index}", f"Событие {index}", datetime(2026, 7, 26, 9, index), all_day=True)
+            for index in range(1, 13)
+        ]
+        view = list_view(items, kind="week", title="Неделя", anchor_date=anchor, days=7)
+
+        text = format_occurrence_list_view(view)
+        keyboard = occurrence_list_keyboard(view)
+
+        self.assertIn("Показано: <b>1-10</b> из <b>12</b>", text)
+        first_page_numbers = [button.text for row in keyboard.inline_keyboard[:2] for button in row]
+        self.assertEqual(first_page_numbers, [str(index) for index in range(1, 11)])
+        pager = keyboard.inline_keyboard[2]
+        self.assertEqual([button.text for button in pager], ["←", "1/2", "→"])
+        self.assertEqual(pager[2].callback_data, f"{LIST_PAGE_PREFIX}week:20260726:1")
+
+    def test_occurrence_list_second_page_uses_visible_row_numbers(self) -> None:
+        anchor = date(2026, 7, 26)
+        items = [
+            occurrence_at(f"occ_page_{index}", f"Событие {index}", datetime(2026, 7, 26, 9, index), all_day=True)
+            for index in range(1, 13)
+        ]
+        view = list_view(items, kind="week", title="Неделя", anchor_date=anchor, days=7, page=1)
+
+        text = format_occurrence_list_view(view)
+        keyboard = occurrence_list_keyboard(view)
+
+        self.assertIn("Показано: <b>11-12</b> из <b>12</b>", text)
+        self.assertIn("<b>1.</b> Событие 11", text)
+        self.assertEqual([button.text for button in keyboard.inline_keyboard[0]], ["1", "2"])
+        self.assertEqual(keyboard.inline_keyboard[1][1].text, "2/2")
 
     def test_occurrence_detail_keyboard_has_done_and_delete(self) -> None:
         keyboard = occurrence_detail_keyboard("occ_1")
@@ -309,4 +378,51 @@ def all_day_occurrence() -> OccurrenceView:
         event_status="active",
         next_notify_at=datetime(2026, 7, 24, 18, 19),
         all_day=True,
+    )
+
+
+def occurrence_at(
+    occurrence_id: str,
+    title: str,
+    occurs_at: datetime,
+    *,
+    all_day: bool = False,
+    source_text: str = "",
+) -> OccurrenceView:
+    return OccurrenceView(
+        occurrence_id=occurrence_id,
+        event_id=f"evt_{occurrence_id}",
+        title=title,
+        description="",
+        event_type="task",
+        occurs_at=occurs_at,
+        occurrence_date=occurs_at.date().isoformat(),
+        occurrence_status="scheduled",
+        event_status="active",
+        next_notify_at=None,
+        all_day=all_day,
+        source_text=source_text,
+    )
+
+
+def list_view(
+    items: list[OccurrenceView],
+    *,
+    kind: str = "today",
+    title: str = "Сегодня",
+    anchor_date: date = date(2026, 7, 26),
+    days: int | None = None,
+    page: int = 0,
+    force_year: bool = False,
+) -> OccurrenceListView:
+    return OccurrenceListView(
+        kind=kind,
+        title=title,
+        empty_text="Пусто",
+        anchor_date=anchor_date,
+        items=items,
+        range_start=anchor_date if days else None,
+        range_end=anchor_date + timedelta(days=days) if days else None,
+        page=page,
+        force_year=force_year,
     )

@@ -551,6 +551,39 @@ Date: 2026-07-24
     model, then optionally add a raw Bot API Rich Messages renderer behind a
     feature flag.
 
+## Compact Occurrence Lists MVP
+
+- Implemented unified compact list rendering for:
+  - `/today`;
+  - `/week`;
+  - `/month`;
+  - `/upcoming`;
+  - `/annual`;
+  - morning daily agenda.
+- Added `OccurrenceListView` as a Telegram adapter view model.
+- Message text is now the source of truth:
+  - compact header, for example `Неделя · 26.07-01.08`;
+  - short date groups, for example `Вс 26.07 · сегодня`;
+  - page range when needed, for example `Показано: 11-20 из 24`.
+- Inline list buttons are numeric only:
+  - up to five numbers per row;
+  - `←`, `1/2`, `→` pagination row when a list has more than 10 visible items;
+  - `Скрыть` remains the last row.
+- Button numbers map to rows visible on the current page, so page 2 starts
+  from button/text row `1`, not `11`.
+- Updated human time labels for compact lists:
+  - broad phrases show `утро`, `день`, `вечер`, `ночь`;
+  - exact user times still show `HH:MM`;
+  - date-only all-day rows still have no noisy time prefix.
+- Added `list_page:` callback:
+  - payload contains kind, anchor date and page index;
+  - the bot rebuilds the current list window instead of storing page data in
+    memory;
+  - stale/deleted occurrence clicks show
+    `Не нашел это напоминание. Обнови список.`.
+- Added regression tests for formatter, keyboard pagination, stale occurrence
+  click and all list entry kinds using the shared view builder.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

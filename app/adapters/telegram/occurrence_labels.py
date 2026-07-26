@@ -14,6 +14,16 @@ def occurrence_time_prefix(item: OccurrenceView) -> str:
     return item.occurs_at.strftime("%H:%M")
 
 
+def compact_time_prefix(item: OccurrenceView) -> str:
+    label = occurrence_time_prefix(item)
+    return {
+        "утром": "утро",
+        "днем": "день",
+        "вечером": "вечер",
+        "ночью": "ночь",
+    }.get(label, label)
+
+
 def occurrence_when_label(item: OccurrenceView) -> str:
     prefix = occurrence_time_prefix(item)
     if not prefix:

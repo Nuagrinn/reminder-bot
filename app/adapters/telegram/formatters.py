@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from assistant_toolkit.telegram import h
 
 from app.adapters.telegram.occurrence_labels import job_when_label
-from app.adapters.telegram.occurrence_labels import occurrence_time_prefix
+from app.adapters.telegram.occurrence_labels import compact_time_prefix
 from app.adapters.telegram.occurrence_labels import occurrence_when_label
+from app.adapters.telegram.occurrence_list_view import OccurrenceListView
+from app.adapters.telegram.occurrence_list_view import occurrence_group_label
+from app.adapters.telegram.occurrence_list_view import occurrence_list_header
 from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import ReminderParseResult
 from app.features.reminder_intake.clarification import normalize_clarification
@@ -68,18 +71,37 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
 
 
 def format_occurrence_list(items: list[OccurrenceView], *, title: str, empty_text: str) -> str:
-    if not items:
-        return empty_text
-    lines = [f"<b>{h(title)}</b>", f"Всего: <b>{len(items)}</b>", ""]
-    current_date = ""
-    for index, item in enumerate(items, start=1):
-        day = item.occurs_at.strftime("%d.%m.%Y")
-        if day != current_date:
-            current_date = day
-            lines.append(f"<b>{day}</b>")
-        time_label = occurrence_time_prefix(item)
+    anchor_date = items[0].occurs_at.date() if items else date.today()
+    view = OccurrenceListView(
+        kind="legacy",
+        title=title,
+        empty_text=empty_text,
+        anchor_date=anchor_date,
+        items=items,
+    )
+    return format_occurrence_list_view(view)
+
+
+def format_occurrence_list_view(view: OccurrenceListView) -> str:
+    if not view.items:
+        return view.empty_text
+    lines = [f"<b>{h(occurrence_list_header(view))}</b>", f"Всего: <b>{view.total_count}</b>"]
+    if view.total_pages > 1:
+        lines.append(
+            f"Показано: <b>{view.page_start_number}-{view.page_end_number}</b> "
+            f"из <b>{view.total_count}</b>"
+        )
+    lines.append("")
+
+    current_date: date | None = None
+    for index, item in enumerate(view.page_items, start=1):
+        item_date = item.occurs_at.date()
+        if not view.suppress_single_day_group and item_date != current_date:
+            current_date = item_date
+            lines.append(f"<b>{h(occurrence_group_label(item_date, view))}</b>")
+        time_label = compact_time_prefix(item)
         if time_label:
-            lines.append(f"<b>{index}.</b> <code>{time_label}</code> · {h(item.title)}")
+            lines.append(f"<b>{index}.</b> <code>{h(time_label)}</code> · {h(item.title)}")
         else:
             lines.append(f"<b>{index}.</b> {h(item.title)}")
     return "\n".join(lines)
@@ -99,11 +121,18 @@ def format_occurrence_detail(item: OccurrenceView) -> str:
     return "\n".join(lines)
 
 
-def format_daily_agenda(items: list[OccurrenceView]) -> str:
-    return format_occurrence_list(
-        items,
-        title="План на сегодня",
-        empty_text="Доброе утро. На сегодня событий нет.",
+def format_daily_agenda(items: list[OccurrenceView], *, anchor_date: date | None = None) -> str:
+    anchor_date = anchor_date or (items[0].occurs_at.date() if items else date.today())
+    return format_occurrence_list_view(
+        OccurrenceListView(
+            kind="agenda",
+            title="План на сегодня",
+            empty_text="Доброе утро. На сегодня событий нет.",
+            anchor_date=anchor_date,
+            items=items,
+            range_start=anchor_date,
+            range_end=anchor_date + timedelta(days=1),
+        )
     )
 
 

@@ -65,8 +65,10 @@ Date: 2026-07-24
    - Detail card supports `Готово`, `Перенести`, `Удалить` and neutral
      `Отмена`.
    - Delete from detail reuses recurring scope menu.
-   - All-day tasks are shown as `день` / date-only instead of the internal
-     `09:00` materialization anchor.
+   - All-day tasks are shown without a noisy time prefix instead of the
+     internal `09:00` materialization anchor.
+   - Broad source phrases like `утром` / `вечером` are shown as human labels,
+     while exact user-provided clock times remain `HH:MM`.
    - `Ежегодные` is a semantic annual-series view, not a long month range:
      it shows the next occurrence of yearly events and materializes it when it
      is beyond the normal 180-day horizon.

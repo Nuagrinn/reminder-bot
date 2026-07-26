@@ -306,7 +306,9 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if not isinstance(payload, dict):
         return _clarification(request.raw_text, "Не удалось разобрать ответ парсера.", [])
     if _is_native_payload(payload):
-        return _normalize_native_payload_titles(normalize_payload_clarification(payload), request)
+        native_payload = normalize_payload_clarification(payload)
+        native_payload = _normalize_native_payload_schedules(native_payload, request)
+        return _normalize_native_payload_titles(native_payload, request)
 
     compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
     raw_text = _clean(compact.get("raw_text")) or _clean(payload.get("raw_text")) or request.raw_text
@@ -363,13 +365,14 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     title_source = _clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text
     title = _title_preserving_raw_language(title_source, raw_text=raw_text)
     date_only_midnight = _date_only_midnight(raw_text=raw_text, event_time=event_time, start_at=start_at)
-    if date_only_midnight:
+    inferred_clock = _inferred_clock_without_explicit_time(raw_text=raw_text, event_time=event_time, start_at=start_at)
+    if date_only_midnight or inferred_clock:
         start_at = ""
         event_time = ""
     all_day = not bool(event_time or start_at)
     raw_temporal_profile = (
         "day_task"
-        if date_only_midnight
+        if date_only_midnight or inferred_clock
         else _clean(
             compact.get("temporal_profile")
             or compact.get("profile")
@@ -422,6 +425,47 @@ def _normalize_native_payload_titles(payload: dict[str, Any], request: ReminderP
         else:
             item["title"] = _title(title_source)
     return payload
+
+
+def _normalize_native_payload_schedules(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return payload
+    raw_text = _clean(payload.get("raw_text")) or request.raw_text
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        schedule = item.get("schedule")
+        if not isinstance(schedule, dict):
+            continue
+        event_time = _clean(schedule.get("time"))
+        start_at = _clean(schedule.get("start_at"))
+        if not start_at and not event_time:
+            schedule["all_day"] = True
+            schedule["precision"] = "date"
+            _downgrade_temporal_profile_to_date(item)
+            continue
+        if not _inferred_clock_without_explicit_time(raw_text=raw_text, event_time=event_time, start_at=start_at):
+            continue
+        if start_at and not _clean(schedule.get("date")):
+            try:
+                schedule["date"] = datetime.fromisoformat(start_at).date().isoformat()
+            except ValueError:
+                pass
+        schedule["start_at"] = None
+        schedule["time"] = None
+        schedule["all_day"] = True
+        schedule["precision"] = "date"
+        _downgrade_temporal_profile_to_date(item)
+    return payload
+
+
+def _downgrade_temporal_profile_to_date(item: dict[str, Any]) -> None:
+    profile = _clean(item.get("temporal_profile")).lower()
+    if profile == "exact_time":
+        item["temporal_profile"] = "day_task"
+    elif profile == "recurring_exact_time":
+        item["temporal_profile"] = "recurring_day_task"
 
 
 def _compact_is_error(payload: dict[str, Any]) -> bool:
@@ -648,6 +692,14 @@ def _date_only_midnight(*, raw_text: str, event_time: str, start_at: str) -> boo
             return False
         return parsed.hour == 0 and parsed.minute == 0
     return True
+
+
+def _inferred_clock_without_explicit_time(*, raw_text: str, event_time: str, start_at: str) -> bool:
+    if not event_time and not start_at:
+        return False
+    if _extract_time(raw_text.lower()):
+        return False
+    return not _looks_like_moment_reminder(raw_text)
 
 
 def _extract_time(low: str) -> str | None:

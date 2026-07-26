@@ -481,6 +481,32 @@ Date: 2026-07-24
   - annual occurrence materialization beyond the normal horizon;
   - reply keyboard annual button.
 
+## Human Time Labels In Lists
+
+- User-facing issue observed in Telegram:
+  - all-day rows rendered as `день`, which looked technical and noisy;
+  - broad time words like `утром` could appear as the internal/default
+    materialization time `09:00`, which looked like an exact user-set time.
+- Updated list/button labels:
+  - exact numeric times still render as `09:00`;
+  - broad source phrases render as short labels: `утром`, `днем`, `вечером`,
+    `ночью`;
+  - date-only all-day rows omit the time prefix entirely and show just the
+    title under the date group.
+- Added `source_text` to occurrence/job views so Telegram formatting can tell
+  broad time wording from an explicit clock time without changing the database
+  schema.
+- Parser and persistence guards:
+  - Claude prompt now says not to convert broad day parts into fake clock
+    times unless the user gave a numeric time;
+  - normalization drops inferred clock times when raw text has no explicit
+    clock time;
+  - event persistence corrects `all_day=false` with missing `time/start_at` to
+    a date-only all-day event.
+- Existing VPS data cleanup:
+  - events with `all_day=0` and no concrete `time/start_at` should be marked
+    all-day, then rematerialized.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

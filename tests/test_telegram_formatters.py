@@ -159,9 +159,35 @@ class TelegramFormattersTest(TestCase):
         text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
         keyboard = occurrence_list_keyboard([item])
 
-        self.assertIn("<code>день</code>", text)
+        self.assertIn("<b>1.</b> Закинуть наличку на карту", text)
+        self.assertNotIn("<code>день</code>", text)
         self.assertNotIn("09:00", text)
-        self.assertIn("1. день", keyboard.inline_keyboard[0][0].text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1. Закинуть наличку на карту")
+
+    def test_broad_time_word_is_shown_instead_of_internal_clock_anchor(self) -> None:
+        item = OccurrenceView(
+            occurrence_id="occ_3",
+            event_id="evt_3",
+            title="Прибить дощечку на кухне",
+            description="",
+            event_type="task",
+            occurs_at=datetime(2026, 7, 25, 9, 0),
+            occurrence_date="2026-07-25",
+            occurrence_status="scheduled",
+            event_status="active",
+            next_notify_at=None,
+            all_day=True,
+            source_text="Завтра утром прибить дощечку на кухне.",
+        )
+
+        text = format_occurrence_list([item], title="Сегодня", empty_text="Пусто")
+        detail = format_occurrence_detail(item)
+        keyboard = occurrence_list_keyboard([item])
+
+        self.assertIn("<code>утром</code>", text)
+        self.assertNotIn("09:00", text)
+        self.assertIn("25.07.2026, утром", detail)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "1. утром · Прибить дощечку на кухне")
 
     def test_occurrence_detail_keyboard_has_done_and_delete(self) -> None:
         keyboard = occurrence_detail_keyboard("occ_1")

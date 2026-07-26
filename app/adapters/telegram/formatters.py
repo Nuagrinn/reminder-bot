@@ -5,6 +5,9 @@ from typing import Any
 
 from assistant_toolkit.telegram import h
 
+from app.adapters.telegram.occurrence_labels import job_when_label
+from app.adapters.telegram.occurrence_labels import occurrence_time_prefix
+from app.adapters.telegram.occurrence_labels import occurrence_when_label
 from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import ReminderParseResult
 from app.features.reminder_intake.clarification import normalize_clarification
@@ -57,7 +60,7 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
     lines = ["<b>Запланировал</b>", ""]
     for occurrence in occurrences[:10]:
         lines.append(f"• <b>{h(occurrence.title)}</b>")
-        lines.append(f"  Событие: <code>{_occurrence_when_label(occurrence)}</code>")
+        lines.append(f"  Событие: <code>{occurrence_when_label(occurrence)}</code>")
         if occurrence.next_notify_at:
             lines.append(f"  Напомню: <code>{_date_time_label(occurrence.next_notify_at)}</code>")
         lines.append("")
@@ -74,8 +77,11 @@ def format_occurrence_list(items: list[OccurrenceView], *, title: str, empty_tex
         if day != current_date:
             current_date = day
             lines.append(f"<b>{day}</b>")
-        time_label = _occurrence_time_label(item)
-        lines.append(f"<b>{index}.</b> <code>{time_label}</code> · {h(item.title)}")
+        time_label = occurrence_time_prefix(item)
+        if time_label:
+            lines.append(f"<b>{index}.</b> <code>{time_label}</code> · {h(item.title)}")
+        else:
+            lines.append(f"<b>{index}.</b> {h(item.title)}")
     return "\n".join(lines)
 
 
@@ -84,7 +90,7 @@ def format_occurrence_detail(item: OccurrenceView) -> str:
         "<b>Напоминание</b>",
         "",
         f"<b>{h(item.title)}</b>",
-        f"Когда: <code>{_occurrence_when_label(item)}</code>",
+        f"Когда: <code>{occurrence_when_label(item)}</code>",
     ]
     if item.next_notify_at:
         lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
@@ -125,7 +131,7 @@ def format_due_notification(job: NotificationJobView) -> str:
     return (
         "<b>Напоминание</b>\n\n"
         f"<b>{h(job.title)}</b>\n"
-        f"План: <code>{_job_when_label(job)}</code>"
+        f"План: <code>{job_when_label(job)}</code>"
     )
 
 
@@ -154,7 +160,7 @@ def format_reschedule_menu(item: OccurrenceView, *, scope: str) -> str:
     return (
         "<b>Перенести напоминание</b>\n\n"
         f"<b>{h(item.title)}</b>\n"
-        f"Сейчас: <code>{_occurrence_when_label(item)}</code>\n"
+        f"Сейчас: <code>{occurrence_when_label(item)}</code>\n"
         f"Масштаб: <code>{scope_label}</code>\n\n"
         "Выбери быстрый вариант или укажи дату/время текстом."
     )
@@ -165,7 +171,7 @@ def format_reschedule_custom_prompt(item: OccurrenceView, *, scope: str) -> str:
     return (
         "<b>Куда перенести?</b>\n\n"
         f"<b>{h(item.title)}</b>\n"
-        f"Сейчас: <code>{_occurrence_when_label(item)}</code>\n"
+        f"Сейчас: <code>{occurrence_when_label(item)}</code>\n"
         f"Масштаб: <code>{scope_label}</code>\n\n"
         "Пришли одним сообщением, например: "
         "<code>завтра</code>, <code>в 18:30</code>, "
@@ -178,7 +184,7 @@ def format_rescheduled(item: OccurrenceView) -> str:
         "<b>Перенесено</b>",
         "",
         f"<b>{h(item.title)}</b>",
-        f"Теперь: <code>{_occurrence_when_label(item)}</code>",
+        f"Теперь: <code>{occurrence_when_label(item)}</code>",
     ]
     if item.next_notify_at:
         lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
@@ -228,26 +234,6 @@ def format_snoozed(minutes: int) -> str:
 
 def _date_time_label(value: datetime) -> str:
     return value.strftime("%d.%m.%Y %H:%M")
-
-
-def _date_label_from_datetime(value: datetime) -> str:
-    return value.strftime("%d.%m.%Y")
-
-
-def _occurrence_when_label(item: OccurrenceView) -> str:
-    if item.all_day:
-        return _date_label_from_datetime(item.occurs_at)
-    return _date_time_label(item.occurs_at)
-
-
-def _job_when_label(job: NotificationJobView) -> str:
-    if job.all_day:
-        return _date_label_from_datetime(job.occurs_at)
-    return _date_time_label(job.occurs_at)
-
-
-def _occurrence_time_label(item: OccurrenceView) -> str:
-    return "день" if item.all_day else item.occurs_at.strftime("%H:%M")
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:

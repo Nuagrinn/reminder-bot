@@ -192,3 +192,88 @@ class ClaudeNormalizationTest(TestCase):
         )
 
         self.assertEqual(payload["items"][0]["title"], "Заказать креатин и протеин")
+
+    def test_compact_payload_drops_inferred_clock_when_user_said_morning(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "прибить дощечку на кухне",
+                "datetime": "2026-07-25T09:00:00",
+                "date": "2026-07-25",
+                "time": "09:00",
+                "temporal_profile": "exact_time",
+            },
+            request("Завтра утром прибить дощечку на кухне."),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "day_task")
+        self.assertTrue(item["schedule"]["all_day"])
+        self.assertIsNone(item["schedule"]["start_at"])
+        self.assertIsNone(item["schedule"]["time"])
+
+    def test_native_payload_drops_inferred_clock_when_user_did_not_say_exact_time(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "schema_version": "reminder-parser-v3",
+                "intent": "create",
+                "status": "ok",
+                "raw_text": "Завтра утром прибить дощечку на кухне.",
+                "items": [
+                    {
+                        "title": "прибить дощечку на кухне",
+                        "description": "",
+                        "event_type": "task",
+                        "temporal_profile": "exact_time",
+                        "priority": "normal",
+                        "schedule": {
+                            "kind": "once",
+                            "timezone": "Europe/Moscow",
+                            "all_day": False,
+                            "start_at": "2026-07-25T09:00:00",
+                            "date": "2026-07-25",
+                            "time": "09:00",
+                            "precision": "datetime",
+                            "recurrence": {
+                                "frequency": "none",
+                                "interval": 1,
+                                "weekdays": [],
+                                "month_days": [],
+                                "months": [],
+                                "until": None,
+                                "count": None,
+                                "rrule": "",
+                            },
+                        },
+                        "notification_offsets": [],
+                        "confidence": 0.8,
+                        "assumptions": [],
+                    }
+                ],
+                "clarification": {"question": "", "options": []},
+            },
+            request("Завтра утром прибить дощечку на кухне."),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "day_task")
+        self.assertTrue(item["schedule"]["all_day"])
+        self.assertIsNone(item["schedule"]["start_at"])
+        self.assertIsNone(item["schedule"]["time"])
+
+    def test_explicit_clock_time_stays_exact(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "прибить дощечку на кухне",
+                "datetime": "2026-07-25T09:00:00",
+                "date": "2026-07-25",
+                "time": "09:00",
+                "temporal_profile": "exact_time",
+            },
+            request("Завтра в 9 прибить дощечку на кухне."),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "exact_time")
+        self.assertFalse(item["schedule"]["all_day"])
+        self.assertEqual(item["schedule"]["start_at"], "2026-07-25T09:00:00")
+        self.assertEqual(item["schedule"]["time"], "09:00")

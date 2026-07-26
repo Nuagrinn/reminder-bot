@@ -145,7 +145,9 @@ The delete action reuses the scoped deletion model for recurring reminders.
 All-day tasks may be internally materialized at the default day anchor time
 (`09:00`) so recurrence and notification jobs have a concrete datetime. Telegram
 lists, detail cards and due notifications hide that internal anchor and display
-`день` or just the date instead.
+just the title/date instead. If the source phrase used a broad day part such as
+`утром` or `вечером`, Telegram displays that short human label instead of the
+internal anchor time. Exact clock times remain visible as `HH:MM`.
 
 Empty list states are explicit and short, for example `На сегодня событий нет`.
 

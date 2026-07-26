@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
+from app.adapters.telegram.occurrence_labels import occurrence_button_label
 from app.features.events.models import NotificationJobView
 from app.features.events.models import OccurrenceView
 
@@ -90,7 +91,7 @@ def occurrence_list_keyboard(items: list[OccurrenceView]) -> InlineKeyboardMarku
         rows.append(
             [
                 InlineKeyboardButton(
-                    _occurrence_button_label(index, item),
+                    occurrence_button_label(index, item),
                     callback_data=f"{OCCURRENCE_DETAIL_PREFIX}{item.occurrence_id}",
                 )
             ]
@@ -155,14 +156,6 @@ def daily_agenda_settings_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton(label, callback_data=f"{DAILY_AGENDA_TOGGLE_PREFIX}{next_value}")]]
     )
-
-
-def _occurrence_button_label(index: int, item: OccurrenceView) -> str:
-    title = item.title
-    if len(title) > 34:
-        title = f"{title[:31]}..."
-    time_label = "день" if item.all_day else item.occurs_at.strftime("%H:%M")
-    return f"{index}. {time_label} · {title}"
 
 
 def _clarification_button_label(option: str) -> str:

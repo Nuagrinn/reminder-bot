@@ -75,6 +75,8 @@ class EventService:
             event_date = start_at.date().isoformat()
         if start_at and not event_time:
             event_time = start_at.strftime("%H:%M")
+        if not start_at and not event_time:
+            all_day = True
 
         with self.db.session() as conn:
             conn.execute(
@@ -256,6 +258,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
+                    e.source_text,
                     COALESCE(eo.all_day_override, e.all_day) AS all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
@@ -287,6 +290,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
+                    e.source_text,
                     COALESCE(eo.all_day_override, e.all_day) AS all_day,
                     e.status AS event_status,
                     MIN(CASE WHEN nj.status = 'pending' THEN nj.notify_at END) AS next_notify_at
@@ -367,6 +371,7 @@ class EventService:
                     e.title,
                     e.description,
                     e.event_type,
+                    e.source_text,
                     COALESCE(eo.all_day_override, e.all_day) AS all_day
                 FROM notification_jobs nj
                 JOIN event_occurrences eo ON eo.id = nj.occurrence_id

@@ -95,6 +95,21 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(due_first[0].all_day)
         self.assertEqual(due_second[-1].notify_at, datetime(2026, 7, 24, 19, 42))
 
+    def test_missing_time_is_persisted_as_all_day_even_if_parser_says_otherwise(self) -> None:
+        item = FakeReminderParserAgent().parse(request("надо завтра помыть машину")).payload["items"][0]
+        item["schedule"]["all_day"] = False
+
+        event = self.service.create_from_agent_item(
+            item,
+            source_text="надо завтра помыть машину",
+            source_kind="text",
+            now=self.now,
+        )
+        occurrence = self.service.upcoming(now=self.now, limit=1)[0]
+
+        self.assertTrue(event.all_day)
+        self.assertTrue(occurrence.all_day)
+
     def test_upcoming_keeps_today_all_day_tasks_after_internal_anchor_time(self) -> None:
         now = datetime(2026, 7, 24, 20, 1)
         self._create_at("надо сегодня вытащить кошачий корм из машины", now=now)

@@ -455,6 +455,32 @@ Date: 2026-07-24
 - Added a regression test for a same-day all-day task created after the
   internal morning anchor.
 
+## Annual View And Title Language Guard
+
+- User-facing issue observed in Telegram:
+  - Russian voice/text command `Сегодня вечером надо заказать креатин и
+    протеин` was saved with English title `Order creatine and protein`.
+- Prompt fix:
+  - Claude now gets an explicit rule to preserve source language/script;
+  - Russian/Cyrillic raw text must produce Russian/Cyrillic title;
+  - titles must not be translated to English.
+- Normalization safety net:
+  - if a single Russian command comes back with an English-only title, Python
+    falls back to a cleaned title from the raw command;
+  - title cleanup now removes helper/time words in a more robust order, so
+    `сегодня вечером надо заказать креатин` becomes `Заказать креатин`.
+- Added organic annual events view:
+  - command `/annual`;
+  - reply keyboard button `🎂 Ежегодные`;
+  - shows the next occurrence of yearly series, birthdays and anniversaries;
+  - materializes the next annual occurrence when it is beyond the default
+    180-day materialization horizon.
+- Added tests for:
+  - Claude prompt language-preservation rule;
+  - compact and native Claude title fallback;
+  - annual occurrence materialization beyond the normal horizon;
+  - reply keyboard annual button.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

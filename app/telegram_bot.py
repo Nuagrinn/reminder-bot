@@ -255,6 +255,20 @@ async def month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _show_range(update, context, title="Месяц", days=31, empty_text="На месяц событий нет.", limit=100)
 
 
+async def annual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    items = await asyncio.to_thread(services.events.annual_occurrences, now=now, limit=100)
+    await _answer_long(
+        update,
+        format_occurrence_list(items, title="Ежегодные", empty_text="Ежегодных событий нет."),
+        parse_mode=ParseMode.HTML,
+        reply_markup=occurrence_list_keyboard(items) if items else main_keyboard(),
+    )
+
+
 async def daily_agenda_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
@@ -332,6 +346,9 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     if text in ("📋 Ближайшие", "Ближайшие"):
         await upcoming(update, context)
+        return
+    if text in ("🎂 Ежегодные", "Ежегодные", "Годовые", "Годовщины", "Дни рождения"):
+        await annual(update, context)
         return
     if text in ("🌅 Утро", "Утро", "Утренний план"):
         await daily_agenda_settings(update, context)
@@ -1169,6 +1186,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CommandHandler("week", week))
     app.add_handler(CommandHandler("month", month))
     app.add_handler(CommandHandler("upcoming", upcoming))
+    app.add_handler(CommandHandler("annual", annual))
     app.add_handler(CommandHandler("morning", daily_agenda_settings))
     app.add_handler(CommandHandler("add", add_command))
     app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))

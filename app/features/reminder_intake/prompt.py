@@ -59,6 +59,9 @@ def build_system_prompt(request: ReminderParseRequest) -> str:
         "- Russian phrase meaning 'every 25th day of month' uses monthly recurrence month_days=[25];\n"
         "- do not use custom_rrule: if the recurrence cannot be represented as "
         "daily/weekly/monthly/yearly, return needs_clarification;\n"
+        "- preserve the language and script of raw_text in title and description; "
+        "if raw_text is Russian/Cyrillic, title must be Russian/Cyrillic; "
+        "do not translate titles to English;\n"
         "- title must omit helper words such as 'nado', 'nuzhno', 'napomni';\n"
         "- title must omit date, time, recurrence words, and notification offset words;\n"
         "- if several events are present, return several items;\n"
@@ -74,6 +77,13 @@ def build_system_prompt(request: ReminderParseRequest) -> str:
         "temporal_profile='recurring_day_task'.\n"
         "- 'every Tuesday at 9 update report' -> recurring weekly weekday TU, "
         "time='09:00', temporal_profile='recurring_exact_time'.\n"
+        "- Russian '\\u0441\\u0435\\u0433\\u043e\\u0434\\u043d\\u044f "
+        "\\u0432\\u0435\\u0447\\u0435\\u0440\\u043e\\u043c "
+        "\\u043d\\u0430\\u0434\\u043e "
+        "\\u0437\\u0430\\u043a\\u0430\\u0437\\u0430\\u0442\\u044c "
+        "\\u043a\\u0440\\u0435\\u0430\\u0442\\u0438\\u043d' -> "
+        "title='\\u0417\\u0430\\u043a\\u0430\\u0437\\u0430\\u0442\\u044c "
+        "\\u043a\\u0440\\u0435\\u0430\\u0442\\u0438\\u043d', not English.\n"
     )
 
 

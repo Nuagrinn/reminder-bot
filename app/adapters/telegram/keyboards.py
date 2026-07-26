@@ -30,7 +30,12 @@ DETAIL_CANCEL_PREFIX = "detail_cancel:"
 
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [["📆 Сегодня", "🗓 Неделя"], ["📋 Ближайшие", "🗂 Месяц"], ["🌅 Утро", "❔ Помощь"]],
+        [
+            ["📆 Сегодня", "🗓 Неделя"],
+            ["📋 Ближайшие", "🗂 Месяц"],
+            ["🎂 Ежегодные", "🌅 Утро"],
+            ["❔ Помощь"],
+        ],
         resize_keyboard=True,
         is_persistent=True,
     )

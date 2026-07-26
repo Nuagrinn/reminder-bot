@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from assistant_toolkit.db import Database
@@ -306,6 +306,51 @@ class EventService:
         start_at = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_at = now + timedelta(days=self.defaults.materialize_days)
         return self.list_occurrences(start_at=start_at, end_at=end_at, limit=limit)
+
+    def annual_occurrences(self, *, now: datetime, limit: int = 100) -> list[OccurrenceView]:
+        limit = max(1, min(100, limit))
+        occurrence_ids: list[str] = []
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM events WHERE status = ? ORDER BY event_date ASC, created_at ASC",
+                (ACTIVE,),
+            ).fetchall()
+            for row in rows:
+                event = event_from_row(row)
+                for occurs_at in _annual_targets(event, now=now, default_hhmm=self.defaults.day_reminder_hhmm):
+                    existing = _occurrence_by_event_datetime(conn, event_id=event.id, occurs_at=occurs_at)
+                    if existing and existing["status"] != SCHEDULED:
+                        continue
+                    target = RescheduleTarget(occurs_at, all_day=event.all_day)
+                    occurrence_id = (
+                        existing["id"]
+                        if existing
+                        else _ensure_occurrence(
+                            conn,
+                            event_id=event.id,
+                            target=target,
+                            now=now,
+                            all_day_override=event.all_day,
+                        )
+                    )
+                    _create_jobs_for_occurrence(
+                        conn,
+                        event_id=event.id,
+                        occurrence_id=occurrence_id,
+                        occurs_at=occurs_at,
+                        now=now,
+                        default_hhmm=self.defaults.day_reminder_hhmm,
+                    )
+                    occurrence_ids.append(occurrence_id)
+                    break
+
+        views: list[OccurrenceView] = []
+        for occurrence_id in occurrence_ids:
+            try:
+                views.append(self.get_occurrence(occurrence_id))
+            except ValueError:
+                continue
+        return sorted(views, key=lambda item: item.occurs_at)[:limit]
 
     def due_jobs(self, *, now: datetime, limit: int = 20) -> list[NotificationJobView]:
         with self.db.session() as conn:
@@ -658,6 +703,59 @@ def _occurrence_event_row(conn, occurrence_id: str):
         """,
         (occurrence_id,),
     ).fetchone()
+
+
+def _occurrence_by_event_datetime(conn, *, event_id: str, occurs_at: datetime):
+    return conn.execute(
+        """
+        SELECT id, status
+        FROM event_occurrences
+        WHERE event_id = ?
+          AND occurs_at = ?
+        """,
+        (event_id, iso(occurs_at)),
+    ).fetchone()
+
+
+def _annual_targets(event: Event, *, now: datetime, default_hhmm: tuple[int, int]) -> list[datetime]:
+    if not _is_annual_event(event):
+        return []
+    start_date = _parse_event_date(event.event_date)
+    if not start_date:
+        return []
+    recurrence = event.recurrence
+    if (_clean(recurrence.get("frequency")) or "none") != "yearly":
+        recurrence = {
+            "frequency": "yearly",
+            "interval": 1,
+            "weekdays": [],
+            "month_days": [start_date.day],
+            "months": [start_date.month],
+            "until": None,
+            "count": None,
+            "rrule": "",
+        }
+    return occurrence_datetimes(
+        recurrence=recurrence,
+        start_date=start_date,
+        event_time=_event_time(event, default_hhmm),
+        now=now,
+        horizon_days=366 * 8,
+    )
+
+
+def _parse_event_date(value: str) -> date | None:
+    if not value:
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+def _is_annual_event(event: Event) -> bool:
+    frequency = _clean(event.recurrence.get("frequency")) or "none"
+    return frequency == "yearly" or event.event_type in {"birthday", "anniversary"}
 
 
 def _validate_reschedule_target(target: RescheduleTarget, *, now: datetime) -> None:

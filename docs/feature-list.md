@@ -59,13 +59,17 @@ Date: 2026-07-24
    - `recurrence.until` is respected by the recurrence engine.
 
 6. List detail/actions - done
-   - `/today`, `/week`, `/month`, `/upcoming` render numbered action buttons.
+   - `/today`, `/week`, `/month`, `/upcoming`, `/annual` render numbered
+     action buttons.
    - Daily agenda also renders action buttons when there are items.
    - Detail card supports `Готово`, `Перенести`, `Удалить` and neutral
      `Отмена`.
    - Delete from detail reuses recurring scope menu.
    - All-day tasks are shown as `день` / date-only instead of the internal
      `09:00` materialization anchor.
+   - `Ежегодные` is a semantic annual-series view, not a long month range:
+     it shows the next occurrence of yearly events and materializes it when it
+     is beyond the normal 180-day horizon.
 
 7. Reschedule reminders - done
    - One-off reminders can be moved from the detail card.
@@ -124,13 +128,20 @@ Date: 2026-07-24
      - shared STT model:
        `/opt/assistant-shared/whisper.cpp/models/ggml-medium.bin`.
 
+13. Parser title language guard - done
+   - Claude prompt now explicitly says to preserve raw_text language/script.
+   - If a Russian command returns an English-only `title`, normalization falls
+     back to a cleaned Russian title from the original phrase.
+   - The title cleaner also strips date/time helper words like `сегодня
+     вечером` before saving.
+
 ## Recommended Next Order
 
 1. Run the bot in Telegram with Claude enabled and collect real phrases that
    parse poorly.
 2. Add edit controls on the confirmation screen for reminder pattern:
    default / only in moment / custom offset.
-3. Add pagination for long `/upcoming`, `/week`, `/month` lists.
+3. Add pagination for long `/upcoming`, `/week`, `/month`, `/annual` lists.
 4. Improve clarification UX after real usage:
    - add custom date/time entry from button;
    - optionally add richer option generation from Claude.

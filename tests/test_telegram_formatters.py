@@ -135,6 +135,7 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn("🗓 Неделя", labels)
         self.assertIn("🗂 Месяц", labels)
+        self.assertIn("🎂 Ежегодные", labels)
         self.assertIn("🌅 Утро", labels)
 
     def test_daily_agenda_settings_keyboard_toggles_state(self) -> None:

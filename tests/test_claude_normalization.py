@@ -136,3 +136,59 @@ class ClaudeNormalizationTest(TestCase):
         self.assertTrue(item["schedule"]["all_day"])
         self.assertIsNone(item["schedule"]["start_at"])
         self.assertIsNone(item["schedule"]["time"])
+
+    def test_compact_payload_keeps_russian_title_when_claude_translates(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "Order creatine and protein",
+                "date": "2026-07-25",
+            },
+            request("Сегодня вечером надо заказать креатин и протеин."),
+        )
+
+        self.assertEqual(payload["items"][0]["title"], "Заказать креатин и протеин")
+
+    def test_native_payload_keeps_russian_title_when_claude_translates(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "schema_version": "reminder-parser-v3",
+                "intent": "create",
+                "status": "ok",
+                "raw_text": "Сегодня вечером надо заказать креатин и протеин.",
+                "items": [
+                    {
+                        "title": "Order creatine and protein",
+                        "description": "",
+                        "event_type": "task",
+                        "temporal_profile": "day_task",
+                        "priority": "normal",
+                        "schedule": {
+                            "kind": "once",
+                            "timezone": "Europe/Moscow",
+                            "all_day": True,
+                            "start_at": None,
+                            "date": "2026-07-25",
+                            "time": None,
+                            "precision": "date",
+                            "recurrence": {
+                                "frequency": "none",
+                                "interval": 1,
+                                "weekdays": [],
+                                "month_days": [],
+                                "months": [],
+                                "until": None,
+                                "count": None,
+                                "rrule": "",
+                            },
+                        },
+                        "notification_offsets": [],
+                        "confidence": 0.8,
+                        "assumptions": [],
+                    }
+                ],
+                "clarification": {"question": "", "options": []},
+            },
+            request("Сегодня вечером надо заказать креатин и протеин."),
+        )
+
+        self.assertEqual(payload["items"][0]["title"], "Заказать креатин и протеин")

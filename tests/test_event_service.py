@@ -241,6 +241,22 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(due_week_before[0].notify_at, datetime(2026, 8, 5, 9, 0))
         self.assertIn(datetime(2026, 8, 11, 20, 0), day_before_notify_times)
 
+    def test_annual_occurrences_materialize_next_yearly_event_beyond_default_horizon(self) -> None:
+        now = datetime(2026, 9, 1, 12, 0)
+        self._create_at("12 августа день рождения Маши", now=now)
+
+        upcoming = self.service.upcoming(now=now, limit=10)
+        annual = self.service.annual_occurrences(now=now, limit=10)
+        due_week_before = self.service.due_jobs(now=datetime(2027, 8, 5, 9, 0), limit=10)
+
+        self.assertEqual(upcoming, [])
+        self.assertEqual(len(annual), 1)
+        self.assertEqual(annual[0].title, "12 августа день рождения Маши")
+        self.assertTrue(annual[0].all_day)
+        self.assertEqual(annual[0].occurs_at, datetime(2027, 8, 12, 9, 0))
+        self.assertEqual(annual[0].next_notify_at, datetime(2027, 8, 5, 9, 0))
+        self.assertEqual(due_week_before[0].notify_at, datetime(2027, 8, 5, 9, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -306,7 +306,7 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if not isinstance(payload, dict):
         return _clarification(request.raw_text, "Не удалось разобрать ответ парсера.", [])
     if _is_native_payload(payload):
-        return normalize_payload_clarification(payload)
+        return _normalize_native_payload_titles(normalize_payload_clarification(payload), request)
 
     compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
     raw_text = _clean(compact.get("raw_text")) or _clean(payload.get("raw_text")) or request.raw_text
@@ -360,7 +360,8 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if not is_recurring and not event_date and not start_at:
         return _clarification(raw_text, "Когда напомнить?", ["сегодня", "завтра", "через час"])
 
-    title = _title(_clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text)
+    title_source = _clean(compact.get("title") or compact.get("text") or payload.get("title") or payload.get("text")) or raw_text
+    title = _title_preserving_raw_language(title_source, raw_text=raw_text)
     date_only_midnight = _date_only_midnight(raw_text=raw_text, event_time=event_time, start_at=start_at)
     if date_only_midnight:
         start_at = ""
@@ -404,6 +405,23 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
 
 def _is_native_payload(payload: dict[str, Any]) -> bool:
     return all(key in payload for key in ("intent", "status", "items", "clarification"))
+
+
+def _normalize_native_payload_titles(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return payload
+    raw_text = _clean(payload.get("raw_text")) or request.raw_text
+    single_item = len([item for item in items if isinstance(item, dict)]) == 1
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title_source = _clean(item.get("title")) or raw_text
+        if single_item:
+            item["title"] = _title_preserving_raw_language(title_source, raw_text=raw_text)
+        else:
+            item["title"] = _title(title_source)
+    return payload
 
 
 def _compact_is_error(payload: dict[str, Any]) -> bool:
@@ -739,16 +757,39 @@ def _recurrence_none() -> dict[str, Any]:
 
 def _title(text: str) -> str:
     clean = re.sub(r"\s+", " ", text.strip())
-    clean = re.sub(r"^(?:надо|нужно|напомни|напомнить|пожалуйста|давай)\s+", "", clean, flags=re.IGNORECASE)
+    clean = _strip_helper_words(clean)
     clean = _strip_time_words(clean)
+    clean = _strip_helper_words(clean)
     clean = clean.strip(" .,!?:;")
     if not clean:
         return "Напоминание"
     return clean[:1].upper() + clean[1:]
 
 
+def _title_preserving_raw_language(title_source: str, *, raw_text: str) -> str:
+    title = _title(title_source)
+    if _looks_translated_title(raw_text=raw_text, title=title):
+        fallback = _title(raw_text)
+        if fallback != "Напоминание":
+            return fallback
+    return title
+
+
+def _looks_translated_title(*, raw_text: str, title: str) -> bool:
+    return bool(title) and _contains_cyrillic(raw_text) and not _contains_cyrillic(title)
+
+
+def _contains_cyrillic(text: str) -> bool:
+    return bool(re.search(r"[А-Яа-яЁё]", text))
+
+
+def _strip_helper_words(text: str) -> str:
+    return re.sub(r"^(?:надо|нужно|напомни|напомнить|пожалуйста|давай)\s+", "", text, flags=re.IGNORECASE)
+
+
 def _strip_time_words(text: str) -> str:
     clean = re.sub(r"\b(?:сегодня|завтра|послезавтра)\b", "", text, flags=re.IGNORECASE)
+    clean = re.sub(r"\b(?:утром|дн[её]м|вечером|ночью)\b", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bчерез\s+(\d+|один|одну|пару)\s+(?:минут|минуты|час|часа|часов|день|дня|дней)\b", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bв\s+\d{1,2}(?::\d{2})?\b", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bза\s+(\d+|один|одну|пару)\s+(?:минут|минуты|час|часа|часов|день|дня|дней)\b", "", clean, flags=re.IGNORECASE)

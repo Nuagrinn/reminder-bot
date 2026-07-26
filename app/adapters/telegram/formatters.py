@@ -20,7 +20,7 @@ def format_start() -> str:
         "- <code>через 2 часа проверить духовку</code>\n"
         "- <code>каждый вторник обновить отчет по калориям</code>\n"
         "- <code>12 августа день рождения Маши</code>\n\n"
-        "Команды: /today, /week, /month, /upcoming, /add"
+        "Команды: /today, /week, /month, /upcoming, /annual, /morning, /add"
     )
 
 

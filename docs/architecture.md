@@ -45,12 +45,13 @@ Telegram text/voice
   - `/week`;
   - `/month`;
   - `/upcoming`;
+  - `/annual`;
   - `/morning`;
   - `/add`.
 - Notification actions:
   - done;
-  - open occurrence detail from `/today`, `/week`, `/month`, `/upcoming` and
-    daily agenda;
+  - open occurrence detail from `/today`, `/week`, `/month`, `/upcoming`,
+    `/annual` and daily agenda;
   - reschedule one-off reminders;
   - reschedule one recurring occurrence;
   - reschedule a recurring series from the selected occurrence;
@@ -147,6 +148,28 @@ lists, detail cards and due notifications hide that internal anchor and display
 `день` or just the date instead.
 
 Empty list states are explicit and short, for example `На сегодня событий нет`.
+
+## Annual Events View
+
+`/annual` and the reply button `🎂 Ежегодные` are a semantic view over yearly
+series, not a wider date range. The service selects active events with
+`frequency=yearly` or birthday/anniversary metadata, computes the next annual
+target and ensures that concrete occurrence exists.
+
+This matters because the normal materialization horizon is intentionally short
+(`materialize_days`, currently 180 days). A birthday next summer should still be
+visible in `Ежегодные` even if it is too far away for `/month` or `/upcoming`.
+The created occurrence uses the same notification rules as the event, so annual
+defaults (`за неделю`, `вечером за день`, `утром в день`) stay consistent.
+
+## Parser Normalization Guard
+
+Claude is instructed to preserve the source language and script in `title` and
+`description`. The Python normalization layer also guards the common failure
+case: if the original phrase contains Cyrillic but a single parsed item returns
+an English-only title, the bot replaces it with a cleaned title from the raw
+phrase. Time/helper words such as `сегодня вечером надо` are stripped before the
+title is saved.
 
 ## Due Notification Actions
 

@@ -636,6 +636,37 @@ Date: 2026-07-24
 - Added a regression test that asserts the clarification callback is
   acknowledged before the parser starts.
 
+## Relative Delay Normalization Guard
+
+- Investigated a real voice parse:
+  `Через три часа надо замариновать курицу`.
+- Claude understood the relative target in assumptions, but returned a
+  contradictory structured schedule:
+  - `temporal_profile=moment_reminder`;
+  - `all_day=true`;
+  - `start_at=null`;
+  - date-only `2026-07-26`.
+- Result before the fix:
+  - confirmation showed only the date;
+  - notification policy still said `в момент события`, which was confusing
+    because the visible event time was missing.
+- Added deterministic Python repair for relative delays:
+  - `через N минут`;
+  - `через N часов`;
+  - `через N дней`.
+- If raw text is a relative delay and Claude omitted `start_at`, normalization
+  now computes `request.now + delta` and writes:
+  - `all_day=false`;
+  - `start_at=...`;
+  - `date=...`;
+  - `time=HH:MM`;
+  - `precision=datetime`;
+  - `temporal_profile=moment_reminder`.
+- Applied the guard to both compact Claude payloads and native
+  `reminder-parser-v3` payloads.
+- Added regression tests for compact and native date-only relative-delay
+  payloads.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

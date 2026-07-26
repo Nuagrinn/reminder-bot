@@ -268,16 +268,8 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
     elif "сегодня" in low:
         target_date = now.date()
     else:
-        rel = re.search(r"через\s+(\d+|один|одну|пару)\s+(минут|минуты|час|часа|часов|день|дня|дней)", low)
-        if rel:
-            amount = _amount(rel.group(1))
-            unit = rel.group(2)
-            delta = timedelta(minutes=amount)
-            if unit.startswith("час"):
-                delta = timedelta(hours=amount)
-            elif unit.startswith("д"):
-                delta = timedelta(days=amount)
-            target = now + delta
+        target = _relative_delay_target(low, now=now)
+        if target:
             return {
                 "start_at": target.isoformat(timespec="seconds"),
                 "date": target.date().isoformat(),
@@ -300,6 +292,24 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
             "temporal_profile": "exact_time",
         }
     return {"start_at": None, "date": target_date.isoformat(), "time": None, "temporal_profile": "day_task"}
+
+
+def _relative_delay_target(raw_text: str, *, now: datetime) -> datetime | None:
+    low = raw_text.lower()
+    rel = re.search(
+        r"через\s+(\d+|один|одну|два|две|три|четыре|пять|пару)\s+"
+        r"(минут|минуту|минуты|час|часа|часов|день|дня|дней)",
+        low,
+    )
+    if not rel:
+        return None
+    amount = _amount(rel.group(1))
+    unit = rel.group(2)
+    if unit.startswith("час"):
+        return now.replace(microsecond=0) + timedelta(hours=amount)
+    if unit.startswith("д"):
+        return now.replace(microsecond=0) + timedelta(days=amount)
+    return now.replace(microsecond=0) + timedelta(minutes=amount)
 
 
 def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
@@ -369,6 +379,11 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if date_only_midnight or inferred_clock:
         start_at = ""
         event_time = ""
+    relative_delay_target = _relative_delay_target(raw_text, now=request.now)
+    if relative_delay_target and not (start_at and event_time):
+        start_at = relative_delay_target.isoformat(timespec="seconds")
+        event_date = relative_delay_target.date().isoformat()
+        event_time = relative_delay_target.strftime("%H:%M")
     all_day = not bool(event_time or start_at)
     raw_temporal_profile = (
         "day_task"
@@ -441,6 +456,15 @@ def _normalize_native_payload_schedules(payload: dict[str, Any], request: Remind
         event_time = _clean(schedule.get("time"))
         start_at = _clean(schedule.get("start_at"))
         if not start_at and not event_time:
+            relative_delay_target = _relative_delay_target(raw_text, now=request.now)
+            if relative_delay_target:
+                schedule["start_at"] = relative_delay_target.isoformat(timespec="seconds")
+                schedule["date"] = relative_delay_target.date().isoformat()
+                schedule["time"] = relative_delay_target.strftime("%H:%M")
+                schedule["all_day"] = False
+                schedule["precision"] = "datetime"
+                item["temporal_profile"] = "moment_reminder"
+                continue
             schedule["all_day"] = True
             schedule["precision"] = "date"
             _downgrade_temporal_profile_to_date(item)
@@ -673,7 +697,7 @@ def _offset_source(value: Any) -> str:
 
 def _looks_like_moment_reminder(raw_text: str) -> bool:
     low = raw_text.lower()
-    if re.search(r"\bчерез\s+(\d+|один|одну|пару)\s+", low):
+    if _relative_delay_target(low, now=datetime.now()):
         return True
     return bool(re.search(r"^\s*напомн\w+\s+(?:мне\s+)?(?:сегодня|завтра|послезавтра|в\s+\d)", low))
 

@@ -119,6 +119,73 @@ class ClaudeNormalizationTest(TestCase):
 
         self.assertEqual(item["temporal_profile"], "moment_reminder")
 
+    def test_compact_relative_delay_repairs_missing_start_at(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "замариновать курицу",
+                "date": "2026-07-24",
+                "temporal_profile": "moment_reminder",
+            },
+            request("через три часа замариновать курицу"),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "moment_reminder")
+        self.assertFalse(item["schedule"]["all_day"])
+        self.assertEqual(item["schedule"]["start_at"], "2026-07-24T15:00:00")
+        self.assertEqual(item["schedule"]["date"], "2026-07-24")
+        self.assertEqual(item["schedule"]["time"], "15:00")
+
+    def test_native_relative_delay_repairs_date_only_moment_reminder(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "schema_version": "reminder-parser-v3",
+                "intent": "create",
+                "status": "ok",
+                "raw_text": "Через три часа замариновать курицу.",
+                "items": [
+                    {
+                        "title": "Замариновать курицу",
+                        "description": "",
+                        "event_type": "task",
+                        "temporal_profile": "moment_reminder",
+                        "priority": "normal",
+                        "schedule": {
+                            "kind": "once",
+                            "timezone": "Europe/Moscow",
+                            "all_day": True,
+                            "start_at": None,
+                            "date": "2026-07-24",
+                            "time": None,
+                            "precision": "date",
+                            "recurrence": {
+                                "frequency": "none",
+                                "interval": 1,
+                                "weekdays": [],
+                                "month_days": [],
+                                "months": [],
+                                "until": None,
+                                "count": None,
+                                "rrule": "",
+                            },
+                        },
+                        "notification_offsets": [],
+                        "confidence": 0.95,
+                        "assumptions": ["start_at = 2026-07-24T15:00:00"],
+                    }
+                ],
+                "clarification": {"question": "", "options": []},
+            },
+            request("Через три часа замариновать курицу."),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["temporal_profile"], "moment_reminder")
+        self.assertFalse(item["schedule"]["all_day"])
+        self.assertEqual(item["schedule"]["start_at"], "2026-07-24T15:00:00")
+        self.assertEqual(item["schedule"]["date"], "2026-07-24")
+        self.assertEqual(item["schedule"]["time"], "15:00")
+
     def test_compact_midnight_without_explicit_time_becomes_day_task(self) -> None:
         payload = normalize_claude_payload(
             {

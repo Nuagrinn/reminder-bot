@@ -128,6 +128,9 @@ Date: 2026-07-24
    - `scripts/setup-shared-whisper-cpp-linux.sh`;
    - `scripts/vps-bootstrap.sh`;
    - `scripts/vps-deploy.sh`.
+   - GitHub Actions auto-deploy:
+     `.github/workflows/deploy.yml`;
+   - push в `main` должен автоматически запускать SSH-deploy на VPS.
    - First VPS deployment completed on `213.239.157.243`:
      - app path: `/opt/reminder-bot`;
      - service: `reminder-bot.service`;
@@ -183,7 +186,8 @@ Date: 2026-07-24
 
 1. VPS deploy hardening
    - Add SQLite backup timer.
-   - Add optional GitHub Actions SSH deploy workflow.
+   - Add deploy result notification if GitHub Actions fails before reaching
+     the bot.
 
 2. Data management
    - Export/import reminders.

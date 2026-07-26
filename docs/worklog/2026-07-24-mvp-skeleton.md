@@ -584,6 +584,32 @@ Date: 2026-07-24
 - Added regression tests for formatter, keyboard pagination, stale occurrence
   click and all list entry kinds using the shared view builder.
 
+## GitHub Actions Auto Deploy
+
+- Added `.github/workflows/deploy.yml`.
+- Workflow triggers:
+  - every push to `main`;
+  - manual `workflow_dispatch`.
+- Deploy flow mirrors LearnKeeper:
+  - write `VPS_SSH_KEY` to a temporary SSH key file;
+  - connect to `VPS_USER@VPS_HOST`;
+  - `cd` into `APP_DIR`;
+  - run `bash scripts/vps-deploy.sh`.
+- Defaults:
+  - `VPS_PORT=22`;
+  - `APP_DIR=/opt/reminder-bot`;
+  - `SERVICE_NAME=reminder-bot.service`.
+- Required GitHub Secrets:
+  - `VPS_SSH_KEY`;
+  - `VPS_HOST`;
+  - `VPS_USER`.
+- Optional GitHub Secrets:
+  - `VPS_PORT`;
+  - `APP_DIR`;
+  - `SERVICE_NAME`.
+- The workflow uses a single concurrency group `reminder-bot-deploy`, so a new
+  push cancels an older in-progress deploy.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

@@ -108,7 +108,20 @@ BOT_REPO_URL=https://github.com/Nuagrinn/reminder-bot.git \
 bash scripts/vps-bootstrap.sh
 ```
 
-Обычная раскатка новой версии:
+Обычная раскатка новой версии происходит автоматически: push в `main`
+запускает GitHub Actions workflow `.github/workflows/deploy.yml`, который
+заходит на VPS по SSH и выполняет `scripts/vps-deploy.sh`.
+
+Required GitHub Secrets:
+
+- `VPS_SSH_KEY`;
+- `VPS_HOST`;
+- `VPS_USER`;
+- `VPS_PORT` optional, default `22`;
+- `APP_DIR` optional, default `/opt/reminder-bot`;
+- `SERVICE_NAME` optional, default `reminder-bot.service`.
+
+Ручная раскатка через SSH, если Actions недоступен:
 
 ```bash
 bash scripts/vps-deploy.sh

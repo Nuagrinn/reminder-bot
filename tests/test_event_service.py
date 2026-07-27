@@ -46,6 +46,28 @@ class EventServiceTests(unittest.TestCase):
             now=now,
         )
 
+    def _create_day_task(self, *, title: str, event_date: str, now: datetime):
+        return self.service.create_from_agent_item(
+            {
+                "title": title,
+                "event_type": "task",
+                "temporal_profile": "day_task",
+                "schedule": {
+                    "kind": "once",
+                    "timezone": "Europe/Moscow",
+                    "all_day": True,
+                    "start_at": None,
+                    "date": event_date,
+                    "time": None,
+                    "recurrence": {"frequency": "none", "interval": 1},
+                },
+                "notification_offsets": [],
+            },
+            source_text=title,
+            source_kind="text",
+            now=now,
+        )
+
     def test_creates_one_off_all_day_event_and_default_job(self) -> None:
         event = self._create("надо завтра пополнить карту наличкой")
         upcoming = self.service.upcoming(now=self.now, limit=10)
@@ -133,6 +155,61 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(new_job_id.startswith("job_"))
         self.assertEqual(len(due_now), 0)
         self.assertEqual(len(due_later), 1)
+
+    def test_today_can_include_overdue_task_snoozed_into_today(self) -> None:
+        yesterday = datetime(2026, 7, 26, 16, 0)
+        self._create_day_task(title="Пополнить карту наличкой", event_date="2026-07-26", now=yesterday)
+        first_due_at = datetime(2026, 7, 26, 17, 0)
+        first_job = self.service.due_jobs(now=first_due_at, limit=10)[0]
+        self.service.mark_job_sent(first_job.job_id, message_id=123, now=first_due_at)
+        last_due_at = datetime(2026, 7, 26, 19, 0)
+        last_job = self.service.due_jobs(now=last_due_at, limit=10)[0]
+        self.service.mark_job_sent(last_job.job_id, message_id=124, now=last_due_at)
+        self.service.snooze_job(last_job.job_id, minutes=1440, now=last_due_at)
+
+        today_start = datetime(2026, 7, 27, 0, 0)
+        today_end = datetime(2026, 7, 27, 23, 59, 59)
+        strict_today = self.service.list_occurrences(start_at=today_start, end_at=today_end, limit=10)
+        carryover_today = self.service.list_occurrences(
+            start_at=today_start,
+            end_at=today_end,
+            limit=10,
+            include_overdue=True,
+        )
+
+        self.assertEqual(strict_today, [])
+        self.assertEqual(len(carryover_today), 1)
+        self.assertEqual(carryover_today[0].title, "Пополнить карту наличкой")
+        self.assertEqual(carryover_today[0].occurs_at.date().isoformat(), "2026-07-26")
+        self.assertEqual(carryover_today[0].next_notify_at, datetime(2026, 7, 27, 19, 0))
+
+    def test_overdue_task_snoozed_beyond_range_stays_hidden_until_due_range(self) -> None:
+        yesterday = datetime(2026, 7, 26, 16, 0)
+        self._create_day_task(title="Пополнить карту наличкой", event_date="2026-07-26", now=yesterday)
+        first_due_at = datetime(2026, 7, 26, 17, 0)
+        first_job = self.service.due_jobs(now=first_due_at, limit=10)[0]
+        self.service.mark_job_sent(first_job.job_id, message_id=123, now=first_due_at)
+        last_due_at = datetime(2026, 7, 26, 19, 0)
+        last_job = self.service.due_jobs(now=last_due_at, limit=10)[0]
+        self.service.mark_job_sent(last_job.job_id, message_id=124, now=last_due_at)
+        self.service.snooze_job(last_job.job_id, minutes=2880, now=last_due_at)
+
+        today = self.service.list_occurrences(
+            start_at=datetime(2026, 7, 27, 0, 0),
+            end_at=datetime(2026, 7, 27, 23, 59, 59),
+            limit=10,
+            include_overdue=True,
+        )
+        tomorrow = self.service.list_occurrences(
+            start_at=datetime(2026, 7, 28, 0, 0),
+            end_at=datetime(2026, 7, 28, 23, 59, 59),
+            limit=10,
+            include_overdue=True,
+        )
+
+        self.assertEqual(today, [])
+        self.assertEqual(len(tomorrow), 1)
+        self.assertEqual(tomorrow[0].next_notify_at, datetime(2026, 7, 28, 19, 0))
 
     def test_reschedule_one_off_rebuilds_default_jobs(self) -> None:
         now = datetime(2026, 7, 24, 16, 42)

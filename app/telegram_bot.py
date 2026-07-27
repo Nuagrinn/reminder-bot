@@ -739,6 +739,7 @@ async def _occurrences_for_range(
     limit: int,
     anchor_date: date | None = None,
     materialize: bool = True,
+    include_overdue: bool = True,
 ):
     start_date = anchor_date or now.date()
     start_at = datetime.combine(start_date, time.min)
@@ -750,6 +751,7 @@ async def _occurrences_for_range(
         start_at=start_at,
         end_at=end_at,
         limit=limit,
+        include_overdue=include_overdue,
     )
 
 
@@ -1112,7 +1114,8 @@ async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     minutes = int(raw_minutes)
     services = _services(context)
     now = local_now(services.settings.timezone)
-    await asyncio.to_thread(services.events.snooze_job, job_id, minutes=minutes, now=now)
+    new_job_id = await asyncio.to_thread(services.events.snooze_job, job_id, minutes=minutes, now=now)
+    log.info("Notification snoozed job_id=%s new_job_id=%s minutes=%s", job_id, new_job_id, minutes)
     await query.answer("Перенесено")
     await query.edit_message_text(format_snoozed(minutes))
 

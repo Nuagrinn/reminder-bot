@@ -245,6 +245,7 @@ class EventService:
         start_at: datetime,
         end_at: datetime,
         limit: int = 50,
+        include_overdue: bool = False,
     ) -> list[OccurrenceView]:
         with self.db.session() as conn:
             rows = conn.execute(
@@ -267,13 +268,42 @@ class EventService:
                 LEFT JOIN notification_jobs nj ON nj.occurrence_id = eo.id
                 WHERE e.status = ?
                   AND eo.status = ?
-                  AND eo.occurs_at >= ?
-                  AND eo.occurs_at <= ?
+                  AND (
+                    (eo.occurs_at >= ? AND eo.occurs_at <= ?)
+                    OR (
+                      ? = 1
+                      AND eo.occurs_at < ?
+                      AND (
+                        NOT EXISTS (
+                          SELECT 1
+                          FROM notification_jobs pending_nj
+                          WHERE pending_nj.occurrence_id = eo.id
+                            AND pending_nj.status = 'pending'
+                        )
+                        OR EXISTS (
+                          SELECT 1
+                          FROM notification_jobs due_nj
+                          WHERE due_nj.occurrence_id = eo.id
+                            AND due_nj.status = 'pending'
+                            AND due_nj.notify_at <= ?
+                        )
+                      )
+                    )
+                  )
                 GROUP BY eo.id
                 ORDER BY eo.occurs_at ASC
                 LIMIT ?
                 """,
-                (ACTIVE, SCHEDULED, iso(start_at), iso(end_at), max(1, min(100, limit))),
+                (
+                    ACTIVE,
+                    SCHEDULED,
+                    iso(start_at),
+                    iso(end_at),
+                    int(include_overdue),
+                    iso(start_at),
+                    iso(end_at),
+                    max(1, min(100, limit)),
+                ),
             ).fetchall()
         return [occurrence_view_from_row(row) for row in rows]
 
@@ -309,7 +339,7 @@ class EventService:
     def upcoming(self, *, now: datetime, limit: int = 20) -> list[OccurrenceView]:
         start_at = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_at = now + timedelta(days=self.defaults.materialize_days)
-        return self.list_occurrences(start_at=start_at, end_at=end_at, limit=limit)
+        return self.list_occurrences(start_at=start_at, end_at=end_at, limit=limit, include_overdue=True)
 
     def annual_occurrences(self, *, now: datetime, limit: int = 100) -> list[OccurrenceView]:
         limit = max(1, min(100, limit))

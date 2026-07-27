@@ -169,7 +169,8 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
             )
         }
 
-        await clarify_callback(update, context)
+        with patch("app.telegram_bot.local_now", return_value=now):
+            await clarify_callback(update, context)
 
         self.assertEqual(query.answers[0], ("Уточняю...", {}))
         self.assertEqual(message.edits[0][0], "Уточняю напоминание...")
@@ -277,7 +278,14 @@ class FakeEvents:
     def materialize_all(self, *, now: datetime) -> int:
         return len(self.items)
 
-    def list_occurrences(self, *, start_at: datetime, end_at: datetime, limit: int = 50) -> list[OccurrenceView]:
+    def list_occurrences(
+        self,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+        limit: int = 50,
+        include_overdue: bool = False,
+    ) -> list[OccurrenceView]:
         items = [item for item in self.items if start_at <= item.occurs_at <= end_at]
         return sorted(items, key=lambda item: item.occurs_at)[:limit]
 

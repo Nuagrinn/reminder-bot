@@ -58,7 +58,12 @@ def cmd_today(args) -> None:
     now = local_now(settings.timezone)
     start_at = datetime.combine(now.date(), datetime.min.time())
     end_at = start_at + timedelta(days=1)
-    for item in services.events.list_occurrences(start_at=start_at, end_at=end_at, limit=args.limit):
+    for item in services.events.list_occurrences(
+        start_at=start_at,
+        end_at=end_at,
+        limit=args.limit,
+        include_overdue=True,
+    ):
         print(f"{_occurrence_cli_when(item)}\t{item.title}\t{item.event_id}")
 
 

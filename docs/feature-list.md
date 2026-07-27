@@ -80,6 +80,10 @@ Date: 2026-07-24
      is beyond the normal 180-day horizon.
    - Annual lists are grouped by month, for example `Май 2027`, with rows like
      `11 Вт День рождения`.
+   - Current and upcoming lists include unfinished overdue tasks once their
+     next pending reminder falls into the requested period. This keeps a task
+     visible after pressing notification snooze like `Завтра`, even though the
+     original event date stays in the past.
 
 7. Reschedule reminders - done
    - One-off reminders can be moved from the detail card.

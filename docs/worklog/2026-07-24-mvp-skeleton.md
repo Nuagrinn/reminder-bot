@@ -698,6 +698,36 @@ Date: 2026-07-24
   - multiple annual events under one month heading;
   - page 2 row numbering with the new row format.
 
+## Snoozed Overdue Tasks In Lists
+
+- Investigated a real case on the VPS:
+  - `Подключить Spotify подписку` had occurrence date `2026-07-26`;
+  - the occurrence was still `scheduled` and event was still `active`;
+  - notification `job_b1b85f9deb35` was pending for `2026-07-27 22:45`;
+  - `/today` and the morning agenda for `2026-07-27` showed no events because
+    lists filtered strictly by `event_occurrences.occurs_at`.
+- Root cause:
+  - the notification card button `Завтра` uses `snooze_job`;
+  - `snooze_job` moves only the next notification time;
+  - it does not move the event occurrence date.
+- UX decision:
+  - list views should not hide unfinished overdue tasks once they become
+    relevant again through a pending reminder.
+- Implementation:
+  - `EventService.list_occurrences` now has `include_overdue`;
+  - overdue rows are included when the occurrence is still active/scheduled and
+    either has no pending jobs or has a pending job due inside the requested
+    range;
+  - `/today`, `/week`, `/month`, `/upcoming`, daily agenda and CLI `today` use
+    this carry-over behavior;
+  - strict range behavior remains available with `include_overdue=False`.
+- Added regression tests for:
+  - an unfinished task snoozed from yesterday into today's list;
+  - a task snoozed beyond the requested range staying hidden until that later
+    range;
+  - clarification callback test now freezes `local_now`, so it does not fail
+    when the real calendar date changes.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

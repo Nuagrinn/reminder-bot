@@ -5,6 +5,11 @@ from typing import Any
 
 from assistant_toolkit.telegram import h
 
+from app.features.events.context import CONTEXT_ADDRESS
+from app.features.events.context import CONTEXT_LINK
+from app.features.events.context import context_kind_marker
+from app.features.events.context import context_summary_label
+from app.features.events.context import normalize_event_contexts
 from app.adapters.telegram.occurrence_labels import job_when_label
 from app.adapters.telegram.occurrence_labels import compact_time_prefix
 from app.adapters.telegram.occurrence_labels import occurrence_when_label
@@ -50,6 +55,7 @@ def format_parse_confirmation(parse_result: ReminderParseResult) -> str:
         repeat = _recurrence_label(item)
         if repeat:
             lines.append(f"Повтор: <code>{h(repeat)}</code>")
+        lines.extend(_context_lines(_item_contexts(item)))
         lines.append(f"Напомню: <code>{h(_notification_label(item))}</code>")
         lines.append("")
     return "\n".join(lines).strip()
@@ -67,6 +73,7 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
     for occurrence in occurrences[:10]:
         lines.append(f"• <b>{h(occurrence.title)}</b>")
         lines.append(f"  Событие: <code>{occurrence_when_label(occurrence)}</code>")
+        lines.extend(_context_lines(occurrence.contexts, prefix="  "))
         if occurrence.next_notify_at:
             lines.append(f"  Напомню: <code>{_date_time_label(occurrence.next_notify_at)}</code>")
         lines.append("")
@@ -118,6 +125,7 @@ def format_occurrence_detail(item: OccurrenceView) -> str:
     ]
     if item.next_notify_at:
         lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
+    lines.extend(_context_lines(item.contexts))
     if item.description:
         lines.extend(["", h(item.description)])
     return "\n".join(lines)
@@ -159,11 +167,14 @@ def format_daily_agenda_toggled(*, enabled: bool, time_label: str) -> str:
 
 
 def format_due_notification(job: NotificationJobView) -> str:
-    return (
-        "<b>Напоминание</b>\n\n"
-        f"<b>{h(job.title)}</b>\n"
-        f"План: <code>{job_when_label(job)}</code>"
-    )
+    lines = [
+        "<b>Напоминание</b>",
+        "",
+        f"<b>{h(job.title)}</b>",
+        f"План: <code>{job_when_label(job)}</code>",
+    ]
+    lines.extend(_context_lines(job.contexts))
+    return "\n".join(lines)
 
 
 def format_event_deleted() -> str:
@@ -274,6 +285,9 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
     title = h(item.title)
     if is_overdue_occurrence(item, view):
         title = f"⚠️ {title}"
+    marker = context_kind_marker(item.contexts)
+    if marker:
+        title = f"{title} · {h(marker)}"
     return f"<code>{h(cell)}</code> {title}"
 
 
@@ -289,6 +303,41 @@ def _format_clarification(payload: dict[str, Any]) -> str:
 
 def _item_title(item: dict[str, Any]) -> str:
     return str(item.get("title") or "Напоминание")
+
+
+def _item_contexts(item: dict[str, Any]) -> list[dict[str, str]]:
+    return normalize_event_contexts(item.get("context"))
+
+
+def _context_lines(contexts: Any, *, prefix: str = "") -> list[str]:
+    items = _coerce_contexts(contexts)
+    links = [context_summary_label(item) for item in items if _context_kind(item) == CONTEXT_LINK]
+    addresses = [context_summary_label(item) for item in items if _context_kind(item) == CONTEXT_ADDRESS]
+    lines: list[str] = []
+    if links:
+        label = "Ссылка" if len(links) == 1 else "Ссылки"
+        lines.append(f"{prefix}{label}: {h(', '.join(links))}")
+    for address in addresses[:2]:
+        lines.append(f"{prefix}Адрес: {h(address)}")
+    return lines
+
+
+def _coerce_contexts(contexts: Any) -> list[Any]:
+    if not contexts:
+        return []
+    if isinstance(contexts, tuple):
+        return list(contexts)
+    if isinstance(contexts, list):
+        if contexts and not isinstance(contexts[0], dict):
+            return list(contexts)
+        return normalize_event_contexts(contexts)
+    return normalize_event_contexts(contexts)
+
+
+def _context_kind(context: Any) -> str:
+    if isinstance(context, dict):
+        return str(context.get("kind") or "")
+    return str(getattr(context, "kind", "") or "")
 
 
 def _schedule_label(item: dict[str, Any]) -> str:

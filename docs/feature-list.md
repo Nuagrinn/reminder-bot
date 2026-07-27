@@ -172,6 +172,9 @@ Date: 2026-07-24
 - [Compact Occurrence Lists UX](feature-plans/compact-occurrence-lists.md):
   unified MVP for `/today`, `/week`, `/month`, `/upcoming`, `/annual` and daily
   agenda; includes Rich Messages research.
+- [Event Context: Links And Locations](feature-plans/event-context-links-locations.md):
+  MVP implemented for preserving URLs, meeting links and raw addresses with
+  detail/due buttons.
 
 ## Recommended Next Order
 
@@ -182,7 +185,10 @@ Date: 2026-07-24
 3. Improve clarification UX after real usage:
    - add custom date/time entry from button;
    - optionally add richer option generation from Claude.
-4. Revisit Rich Messages as a second renderer once the Python Telegram library
+4. Revisit event context after real usage:
+   - add link/address edit controls;
+   - add optional geocoding for precise venue/location cards.
+5. Revisit Rich Messages as a second renderer once the Python Telegram library
    supports them or after a small raw Bot API experiment.
 
 ## P1 - Near Next

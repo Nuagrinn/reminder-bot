@@ -154,6 +154,24 @@ internal anchor time. Exact clock times remain visible as `HH:MM`.
 
 Empty list states are explicit and short, for example `На сегодня событий нет`.
 
+## Event Context
+
+Events can store structured context rows in `event_contexts`. The first MVP
+supports:
+
+- `link`: meeting/document/order/ticket URLs;
+- `address`: raw address text with a map-search button.
+
+The parser normalizes optional `context` from Claude, but URL extraction is also
+deterministic so exact links are preserved from the original Telegram text. The
+title cleaner removes URLs and helper phrases like `ссылка в телемост` or
+`адрес: ...` before saving the event title.
+
+Occurrence and due-job views attach event contexts after the main SQLite query.
+Telegram lists stay compact and show only `· ссылка` / `· адрес`; confirmation,
+saved result, detail cards and due notifications show the short context line and
+add URL/map buttons.
+
 ## Annual Events View
 
 `/annual` and the reply button `🎂 Ежегодные` are a semantic view over yearly

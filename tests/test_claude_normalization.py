@@ -215,6 +215,67 @@ class ClaudeNormalizationTest(TestCase):
 
         self.assertEqual(payload["items"][0]["title"], "Заказать креатин и протеин")
 
+    def test_compact_payload_extracts_context_link_from_raw_text(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "title": "собес/скрининг, ссылка в телемост",
+                "datetime": "2026-07-25T14:00:00",
+                "date": "2026-07-25",
+                "time": "14:00",
+            },
+            request("Завтра в 14:00 собес/скрининг, ссылка в телемост: https://telemost.yandex.ru/j/123"),
+        )
+        item = payload["items"][0]
+
+        self.assertEqual(item["title"], "Собес/скрининг")
+        self.assertEqual(item["context"][0]["label"], "Телемост")
+        self.assertEqual(item["context"][0]["value"], "https://telemost.yandex.ru/j/123")
+
+    def test_native_payload_extracts_context_when_claude_omits_it(self) -> None:
+        payload = normalize_claude_payload(
+            {
+                "schema_version": "reminder-parser-v3",
+                "intent": "create",
+                "status": "ok",
+                "raw_text": "Завтра в 14:00 собес/скрининг https://meet.google.com/abc-defg-hij",
+                "items": [
+                    {
+                        "title": "собес/скрининг",
+                        "description": "",
+                        "event_type": "calendar_event",
+                        "temporal_profile": "exact_time",
+                        "priority": "normal",
+                        "schedule": {
+                            "kind": "once",
+                            "timezone": "Europe/Moscow",
+                            "all_day": False,
+                            "start_at": "2026-07-25T14:00:00",
+                            "date": "2026-07-25",
+                            "time": "14:00",
+                            "precision": "datetime",
+                            "recurrence": {
+                                "frequency": "none",
+                                "interval": 1,
+                                "weekdays": [],
+                                "month_days": [],
+                                "months": [],
+                                "until": None,
+                                "count": None,
+                                "rrule": "",
+                            },
+                        },
+                        "notification_offsets": [],
+                        "confidence": 0.9,
+                        "assumptions": [],
+                    }
+                ],
+                "clarification": {"question": "", "options": []},
+            },
+            request("Завтра в 14:00 собес/скрининг https://meet.google.com/abc-defg-hij"),
+        )
+
+        self.assertEqual(payload["items"][0]["context"][0]["label"], "Google Meet")
+
     def test_native_payload_keeps_russian_title_when_claude_translates(self) -> None:
         payload = normalize_claude_payload(
             {

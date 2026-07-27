@@ -43,6 +43,25 @@ class FakeParserTests(unittest.TestCase):
         self.assertEqual(item["temporal_profile"], "exact_time")
         self.assertEqual(item["schedule"]["start_at"], "2026-07-24T15:30:00")
 
+    def test_parses_link_context_without_polluting_title(self) -> None:
+        result = FakeReminderParserAgent().parse(
+            request("завтра в 14:00 собес/скрининг, ссылка в телемост: https://telemost.yandex.ru/j/123")
+        )
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["title"], "Собес/скрининг")
+        self.assertEqual(item["context"][0]["kind"], "link")
+        self.assertEqual(item["context"][0]["label"], "Телемост")
+        self.assertEqual(item["context"][0]["value"], "https://telemost.yandex.ru/j/123")
+
+    def test_parses_address_context_without_polluting_title(self) -> None:
+        result = FakeReminderParserAgent().parse(request("завтра в 19:00 встреча, адрес: Москва, Никольская 10"))
+        item = result.payload["items"][0]
+
+        self.assertEqual(item["title"], "Встреча")
+        self.assertEqual(item["context"][0]["kind"], "address")
+        self.assertEqual(item["context"][0]["value"], "Москва, Никольская 10")
+
     def test_parses_weekly_task(self) -> None:
         result = FakeReminderParserAgent().parse(request("каждый вторник обновлять отчет по калориям"))
         item = result.payload["items"][0]

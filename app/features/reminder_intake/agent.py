@@ -7,6 +7,8 @@ from typing import Any, Protocol
 
 from assistant_toolkit.llm import StructuredClaudeRunner
 
+from app.features.events.context import normalize_event_contexts
+from app.features.events.context import strip_context_from_title
 from app.features.notifications.policy import VALID_TEMPORAL_PROFILES, derive_temporal_profile
 from app.features.reminder_intake.clarification import normalize_clarification
 from app.features.reminder_intake.clarification import normalize_payload_clarification
@@ -248,6 +250,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
         "client_ref": "item_1",
         "title": _title(title_source),
         "description": "",
+        "context": normalize_event_contexts(None, raw_text=text, include_extracted=True),
         "event_type": event_type,
         "temporal_profile": temporal_profile,
         "priority": "normal",
@@ -318,6 +321,7 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
     if _is_native_payload(payload):
         native_payload = normalize_payload_clarification(payload)
         native_payload = _normalize_native_payload_schedules(native_payload, request)
+        native_payload = _normalize_native_payload_contexts(native_payload, request)
         return _normalize_native_payload_titles(native_payload, request)
 
     compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
@@ -399,6 +403,20 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
         "client_ref": "item_1",
         "title": title,
         "description": _clean(compact.get("description")),
+        "context": normalize_event_contexts(
+            compact.get("context")
+            or compact.get("contexts")
+            or {
+                "links": compact.get("links") or compact.get("link") or compact.get("url") or compact.get("urls"),
+                "locations": compact.get("locations")
+                or compact.get("location")
+                or compact.get("address")
+                or compact.get("venue"),
+                "notes": compact.get("notes") or compact.get("note"),
+            },
+            raw_text=raw_text,
+            include_extracted=True,
+        ),
         "event_type": event_type if event_type in {"task", "calendar_event", "deadline", "birthday", "anniversary", "habit"} else ("habit" if is_recurring else "task"),
         "temporal_profile": raw_temporal_profile if raw_temporal_profile in VALID_TEMPORAL_PROFILES else "",
         "priority": _priority(compact.get("priority")),
@@ -439,6 +457,23 @@ def _normalize_native_payload_titles(payload: dict[str, Any], request: ReminderP
             item["title"] = _title_preserving_raw_language(title_source, raw_text=raw_text)
         else:
             item["title"] = _title(title_source)
+    return payload
+
+
+def _normalize_native_payload_contexts(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return payload
+    raw_text = _clean(payload.get("raw_text")) or request.raw_text
+    single_item = len([item for item in items if isinstance(item, dict)]) == 1
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item["context"] = normalize_event_contexts(
+            item.get("context") or item.get("contexts"),
+            raw_text=raw_text,
+            include_extracted=single_item,
+        )
     return payload
 
 
@@ -832,7 +867,7 @@ def _recurrence_none() -> dict[str, Any]:
 
 
 def _title(text: str) -> str:
-    clean = re.sub(r"\s+", " ", text.strip())
+    clean = strip_context_from_title(re.sub(r"\s+", " ", text.strip()))
     clean = _strip_helper_words(clean)
     clean = _strip_time_words(clean)
     clean = _strip_helper_words(clean)

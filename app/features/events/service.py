@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -9,10 +9,13 @@ from assistant_toolkit.db import Database
 
 from app.core.ids import new_id
 from app.core.time import iso, parse_date, parse_time
+from app.features.events.context import normalize_event_contexts
 from app.features.events.models import (
     Event,
+    EventContext,
     NotificationJobView,
     OccurrenceView,
+    event_context_from_row,
     event_from_row,
     notification_job_view_from_row,
     notification_rule_from_row,
@@ -64,6 +67,11 @@ class EventService:
         created = now.replace(microsecond=0)
         title = _clean(item.get("title")) or "Напоминание"
         description = _clean(item.get("description"))
+        contexts = normalize_event_contexts(
+            item.get("context"),
+            raw_text=source_text,
+            include_extracted="context" not in item,
+        )
         event_type = _clean(item.get("event_type")) or "task"
         timezone = _clean(schedule.get("timezone")) or self.defaults.timezone
         all_day = bool(schedule.get("all_day", False))
@@ -106,6 +114,27 @@ class EventService:
                     iso(created),
                 ),
             )
+            for position, context in enumerate(contexts):
+                conn.execute(
+                    """
+                    INSERT INTO event_contexts (
+                        id, event_id, kind, label, value, normalized_value,
+                        source, position, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_id("ctx_"),
+                        event_id,
+                        context["kind"],
+                        context["label"],
+                        context["value"],
+                        context["normalized_value"],
+                        context["source"],
+                        position,
+                        iso(created),
+                    ),
+                )
             for rule in build_notification_rules(item, now=now, defaults=self.defaults):
                 conn.execute(
                     """
@@ -305,7 +334,7 @@ class EventService:
                     max(1, min(100, limit)),
                 ),
             ).fetchall()
-        return [occurrence_view_from_row(row) for row in rows]
+        return self._attach_contexts([occurrence_view_from_row(row) for row in rows])
 
     def get_occurrence(self, occurrence_id: str) -> OccurrenceView:
         with self.db.session() as conn:
@@ -334,7 +363,7 @@ class EventService:
             ).fetchone()
         if not row:
             raise ValueError(f"Occurrence not found: {occurrence_id}")
-        return occurrence_view_from_row(row)
+        return self._attach_contexts([occurrence_view_from_row(row)])[0]
 
     def upcoming(self, *, now: datetime, limit: int = 20) -> list[OccurrenceView]:
         start_at = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -415,7 +444,7 @@ class EventService:
                 """,
                 (PENDING, ACTIVE, SCHEDULED, iso(now), max(1, min(100, limit))),
             ).fetchall()
-        return [notification_job_view_from_row(row) for row in rows]
+        return self._attach_job_contexts([notification_job_view_from_row(row) for row in rows])
 
     def mark_job_sent(self, job_id: str, *, message_id: int | None, now: datetime) -> None:
         with self.db.session() as conn:
@@ -427,6 +456,48 @@ class EventService:
                 """,
                 (iso(now), message_id, iso(now), job_id),
             )
+
+    def contexts_for_event(self, event_id: str) -> tuple[EventContext, ...]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM event_contexts
+                WHERE event_id = ?
+                ORDER BY position ASC, created_at ASC
+                """,
+                (event_id,),
+            ).fetchall()
+        return tuple(event_context_from_row(row) for row in rows)
+
+    def _contexts_by_event_ids(self, event_ids: list[str]) -> dict[str, tuple[EventContext, ...]]:
+        unique_ids = sorted(set(event_ids))
+        if not unique_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in unique_ids)
+        with self.db.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM event_contexts
+                WHERE event_id IN ({placeholders})
+                ORDER BY event_id ASC, position ASC, created_at ASC
+                """,
+                tuple(unique_ids),
+            ).fetchall()
+        grouped: dict[str, list[EventContext]] = {event_id: [] for event_id in unique_ids}
+        for row in rows:
+            context = event_context_from_row(row)
+            grouped.setdefault(context.event_id, []).append(context)
+        return {event_id: tuple(items) for event_id, items in grouped.items()}
+
+    def _attach_contexts(self, items: list[OccurrenceView]) -> list[OccurrenceView]:
+        contexts_by_event_id = self._contexts_by_event_ids([item.event_id for item in items])
+        return [replace(item, contexts=contexts_by_event_id.get(item.event_id, ())) for item in items]
+
+    def _attach_job_contexts(self, jobs: list[NotificationJobView]) -> list[NotificationJobView]:
+        contexts_by_event_id = self._contexts_by_event_ids([job.event_id for job in jobs])
+        return [replace(job, contexts=contexts_by_event_id.get(job.event_id, ())) for job in jobs]
 
     def mark_job_failed(self, job_id: str, *, reason: str, now: datetime) -> None:
         with self.db.session() as conn:

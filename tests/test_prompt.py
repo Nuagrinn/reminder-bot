@@ -22,6 +22,8 @@ class PromptTest(TestCase):
         self.assertIn("do not use custom_rrule", prompt)
         self.assertIn("do not translate titles to English", prompt)
         self.assertIn("broad day parts", prompt)
+        self.assertIn("context links/locations", prompt)
+        self.assertIn("preserve links exactly", prompt)
         self.assertIn("YYYY-MM-DDTHH:MM:00", prompt)
 
     def test_user_prompt_escapes_non_ascii_for_windows_cli(self) -> None:

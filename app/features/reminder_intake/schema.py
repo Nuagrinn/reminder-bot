@@ -41,6 +41,37 @@ REMINDER_JSON_SCHEMA: dict[str, Any] = {
                     "client_ref": {"type": "string"},
                     "title": {"type": "string"},
                     "description": {"type": "string"},
+                    "context": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["links", "locations"],
+                        "properties": {
+                            "links": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": ["url", "label"],
+                                    "properties": {
+                                        "url": {"type": "string"},
+                                        "label": {"type": "string"},
+                                    },
+                                },
+                            },
+                            "locations": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": ["address", "label"],
+                                    "properties": {
+                                        "address": {"type": "string"},
+                                        "label": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
                     "event_type": {
                         "type": "string",
                         "enum": ["task", "calendar_event", "deadline", "birthday", "anniversary", "habit"],

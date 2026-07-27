@@ -99,6 +99,27 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(due[0].occurs_at, datetime(2026, 7, 24, 14, 0))
         self.assertEqual(due[0].notify_at, datetime(2026, 7, 24, 14, 0))
 
+    def test_event_context_persists_into_occurrence_and_due_views(self) -> None:
+        event = self._create("завтра в 14:00 собес/скрининг, ссылка в телемост: https://telemost.yandex.ru/j/123")
+        contexts = self.service.contexts_for_event(event.id)
+        occurrence = self.service.upcoming(now=self.now, limit=1)[0]
+        due = self.service.due_jobs(now=datetime(2026, 7, 25, 13, 0), limit=10)
+
+        self.assertEqual(event.title, "Собес/скрининг")
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].kind, "link")
+        self.assertEqual(contexts[0].label, "Телемост")
+        self.assertEqual(occurrence.contexts[0].value, "https://telemost.yandex.ru/j/123")
+        self.assertEqual(due[0].contexts[0].label, "Телемост")
+
+    def test_address_context_persists(self) -> None:
+        event = self._create("завтра в 19:00 встреча, адрес: Москва, Никольская 10")
+        occurrence = self.service.upcoming(now=self.now, limit=1)[0]
+
+        self.assertEqual(event.title, "Встреча")
+        self.assertEqual(occurrence.contexts[0].kind, "address")
+        self.assertEqual(occurrence.contexts[0].value, "Москва, Никольская 10")
+
     def test_today_exact_time_gets_hour_and_quarter_jobs(self) -> None:
         self._create("сегодня в 15:30 оплатить счет")
         due_first = self.service.due_jobs(now=datetime(2026, 7, 24, 14, 30), limit=10)

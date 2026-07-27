@@ -47,6 +47,7 @@ from app.adapters.telegram.keyboards import (
     reschedule_scope_keyboard,
 )
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
+from app.features.events.models import EventContext
 from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import NotificationJobView, OccurrenceView
@@ -70,6 +71,19 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("25.07.2026", text)
         self.assertIn("вечером за день", text)
         self.assertNotIn("Заметка:", text)
+
+    def test_confirmation_text_shows_context_link(self) -> None:
+        parse_result = FakeReminderParserAgent().parse(
+            request("завтра в 14:00 собес/скрининг, ссылка в телемост: https://telemost.yandex.ru/j/123")
+        )
+
+        text = format_parse_confirmation(parse_result)
+        keyboard = confirmation_keyboard("pending_123", parse_result.payload["items"][0]["context"])
+
+        self.assertIn("Собес/скрининг", text)
+        self.assertIn("Ссылка: Телемост", text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].url, "https://telemost.yandex.ru/j/123")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{CONFIRM_REMINDER_PREFIX}pending_123")
 
     def test_confirmation_text_contains_daily_interval(self) -> None:
         parse_result = FakeReminderParserAgent().parse(request("каждые два дня проверять почту"))
@@ -132,6 +146,29 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[4][0].callback_data, f"{HIDE_NOTIFICATION_PREFIX}job_1")
 
+    def test_due_keyboard_adds_context_url_button(self) -> None:
+        job = NotificationJobView(
+            job_id="job_1",
+            event_id="evt_1",
+            occurrence_id="occ_1",
+            notification_rule_id="rule_1",
+            title="Собес/скрининг",
+            description="",
+            event_type="calendar_event",
+            occurs_at=datetime(2026, 7, 25, 14, 0),
+            notify_at=datetime(2026, 7, 25, 13, 0),
+            job_status="pending",
+            contexts=(link_context(),),
+        )
+
+        text = format_due_notification(job)
+        keyboard = due_keyboard(job)
+
+        self.assertIn("Ссылка: Телемост", text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "Открыть: Телемост")
+        self.assertEqual(keyboard.inline_keyboard[0][0].url, "https://telemost.yandex.ru/j/123")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{DONE_PREFIX}occ_1")
+
     def test_delete_scope_keyboard_has_recurring_choices(self) -> None:
         keyboard = delete_scope_keyboard(occurrence_id="occ_1", event_id="evt_1")
         callbacks = [row[0].callback_data for row in keyboard.inline_keyboard]
@@ -164,6 +201,17 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, f"{OCCURRENCE_DETAIL_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[0][0].text, "1")
         self.assertEqual(keyboard.inline_keyboard[-1][0].callback_data, f"{HIDE_MESSAGE_PREFIX}list")
+
+    def test_occurrence_list_marks_link_and_address_context(self) -> None:
+        items = [
+            occurrence_at("occ_link", "Собес/скрининг", datetime(2026, 7, 25, 14, 0), contexts=(link_context(),)),
+            occurrence_at("occ_address", "Встреча", datetime(2026, 7, 25, 19, 0), contexts=(address_context(),)),
+        ]
+
+        text = format_occurrence_list(items, title="Сегодня", empty_text="Пусто")
+
+        self.assertIn("Собес/скрининг · ссылка", text)
+        self.assertIn("Встреча · адрес", text)
 
     def test_all_day_occurrence_list_hides_internal_nine_am_anchor(self) -> None:
         item = all_day_occurrence()
@@ -345,6 +393,26 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("Проверять почту", text)
         self.assertIn("25.07.2026 09:00", text)
 
+    def test_occurrence_detail_shows_context_and_buttons(self) -> None:
+        item = occurrence_at("occ_link", "Собес/скрининг", datetime(2026, 7, 25, 14, 0), contexts=(link_context(),))
+
+        text = format_occurrence_detail(item)
+        keyboard = occurrence_detail_keyboard(item)
+
+        self.assertIn("Ссылка: Телемост", text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].url, "https://telemost.yandex.ru/j/123")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{DONE_PREFIX}occ_link")
+
+    def test_occurrence_detail_shows_address_map_button(self) -> None:
+        item = occurrence_at("occ_address", "Встреча", datetime(2026, 7, 25, 19, 0), contexts=(address_context(),))
+
+        text = format_occurrence_detail(item)
+        keyboard = occurrence_detail_keyboard(item)
+
+        self.assertIn("Адрес: Москва, Никольская 10", text)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "Открыть карту")
+        self.assertIn("https://yandex.ru/maps/?text=", keyboard.inline_keyboard[0][0].url)
+
     def test_all_day_occurrence_detail_hides_internal_time(self) -> None:
         text = format_occurrence_detail(all_day_occurrence())
 
@@ -431,6 +499,7 @@ def occurrence_at(
     *,
     all_day: bool = False,
     source_text: str = "",
+    contexts: tuple[EventContext, ...] = (),
 ) -> OccurrenceView:
     return OccurrenceView(
         occurrence_id=occurrence_id,
@@ -445,6 +514,35 @@ def occurrence_at(
         next_notify_at=None,
         all_day=all_day,
         source_text=source_text,
+        contexts=contexts,
+    )
+
+
+def link_context() -> EventContext:
+    return EventContext(
+        id="ctx_1",
+        event_id="evt_1",
+        kind="link",
+        label="Телемост",
+        value="https://telemost.yandex.ru/j/123",
+        normalized_value="https://telemost.yandex.ru/j/123",
+        source="extracted",
+        position=0,
+        created_at=datetime(2026, 7, 24, 12, 0),
+    )
+
+
+def address_context() -> EventContext:
+    return EventContext(
+        id="ctx_2",
+        event_id="evt_2",
+        kind="address",
+        label="Адрес",
+        value="Москва, Никольская 10",
+        normalized_value="Москва, Никольская 10",
+        source="extracted",
+        position=0,
+        created_at=datetime(2026, 7, 24, 12, 0),
     )
 
 

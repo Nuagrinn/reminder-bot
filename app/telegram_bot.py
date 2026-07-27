@@ -87,6 +87,7 @@ from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.config import PROJECT_ROOT, Settings, load_settings
 from app.core.ids import new_id
 from app.core.time import local_now
+from app.features.events.context import normalize_event_contexts
 from app.features.events.reschedule import RescheduleParseError, parse_reschedule_target, quick_reschedule_target
 from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.features.reminder_intake.clarification import clarification_options_from_payload
@@ -546,10 +547,19 @@ def _needs_clarification(parse_result: ReminderParseResult) -> bool:
 
 def _pending_inline_keyboard(pending_id: str, parse_result: ReminderParseResult):
     if _can_confirm(parse_result):
-        return confirmation_keyboard(pending_id)
+        return confirmation_keyboard(pending_id, _parse_result_contexts(parse_result))
     if _needs_clarification(parse_result):
         return clarification_keyboard(pending_id, _clarification_options(parse_result))
     return None
+
+
+def _parse_result_contexts(parse_result: ReminderParseResult) -> list[dict[str, str]]:
+    payload = parse_result.payload
+    items = [item for item in payload.get("items", []) if isinstance(item, dict)]
+    contexts: list[dict[str, str]] = []
+    for item in items[:3]:
+        contexts.extend(normalize_event_contexts(item.get("context")))
+    return contexts
 
 
 def _clarification_options(parse_result: ReminderParseResult) -> list[str]:
@@ -640,7 +650,7 @@ async def _maybe_apply_pending_reschedule(
         update,
         format_rescheduled(new_occurrence),
         parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_detail_keyboard(new_occurrence.occurrence_id),
+        reply_markup=occurrence_detail_keyboard(new_occurrence),
     )
     return True
 
@@ -956,7 +966,7 @@ async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAU
     await query.edit_message_text(
         format_occurrence_detail(occurrence),
         parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_detail_keyboard(occurrence.occurrence_id),
+        reply_markup=occurrence_detail_keyboard(occurrence),
     )
 
 
@@ -1088,7 +1098,7 @@ async def reschedule_quick_callback(update: Update, context: ContextTypes.DEFAUL
     await query.edit_message_text(
         format_rescheduled(new_occurrence),
         parse_mode=ParseMode.HTML,
-        reply_markup=occurrence_detail_keyboard(new_occurrence.occurrence_id),
+        reply_markup=occurrence_detail_keyboard(new_occurrence),
     )
 
 

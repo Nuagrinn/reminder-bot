@@ -3,7 +3,10 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
-from app.features.events.models import NotificationJobView
+from app.features.events.context import context_action_url
+from app.features.events.context import context_button_label
+from app.features.events.context import normalize_event_contexts
+from app.features.events.models import NotificationJobView, OccurrenceView
 
 
 DONE_PREFIX = "done:"
@@ -43,13 +46,17 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def confirmation_keyboard(pending_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def confirmation_keyboard(pending_id: str, contexts=None) -> InlineKeyboardMarkup:
+    rows = _context_rows(contexts)
+    rows.extend(
         [
             [InlineKeyboardButton("Сохранить", callback_data=f"{CONFIRM_REMINDER_PREFIX}{pending_id}")],
             [InlineKeyboardButton("Отмена", callback_data=f"{DISCARD_REMINDER_PREFIX}{pending_id}")],
             _hide_row("confirmation"),
         ]
+    )
+    return InlineKeyboardMarkup(
+        rows
     )
 
 
@@ -74,7 +81,8 @@ def clarification_keyboard(pending_id: str, options: list[str]) -> InlineKeyboar
 
 
 def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+    rows = _context_rows(job.contexts)
+    rows.extend(
         [
             [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{job.occurrence_id}")],
             [
@@ -85,6 +93,9 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{job.occurrence_id}")],
             [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_NOTIFICATION_PREFIX}{job.job_id}")],
         ]
+    )
+    return InlineKeyboardMarkup(
+        rows
     )
 
 
@@ -109,8 +120,10 @@ def occurrence_list_keyboard(view: OccurrenceListView) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def occurrence_detail_keyboard(item: OccurrenceView | str) -> InlineKeyboardMarkup:
+    occurrence_id = item.occurrence_id if isinstance(item, OccurrenceView) else item
+    rows = _context_rows(item.contexts if isinstance(item, OccurrenceView) else ())
+    rows.extend(
         [
             [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{occurrence_id}")],
             [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{occurrence_id}")],
@@ -118,6 +131,9 @@ def occurrence_detail_keyboard(occurrence_id: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Отмена", callback_data=f"{DETAIL_CANCEL_PREFIX}{occurrence_id}")],
             _hide_row("detail"),
         ]
+    )
+    return InlineKeyboardMarkup(
+        rows
     )
 
 
@@ -177,6 +193,29 @@ def daily_agenda_settings_keyboard(*, enabled: bool) -> InlineKeyboardMarkup:
 
 def _hide_row(scope: str) -> list[InlineKeyboardButton]:
     return [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_MESSAGE_PREFIX}{scope}")]
+
+
+def _context_rows(contexts) -> list[list[InlineKeyboardButton]]:
+    items = _coerce_contexts(contexts)
+    rows: list[list[InlineKeyboardButton]] = []
+    for item in items[:4]:
+        url = context_action_url(item)
+        if not url:
+            continue
+        rows.append([InlineKeyboardButton(context_button_label(item), url=url)])
+    return rows
+
+
+def _coerce_contexts(contexts) -> list:
+    if not contexts:
+        return []
+    if isinstance(contexts, tuple):
+        return list(contexts)
+    if isinstance(contexts, list):
+        if contexts and not isinstance(contexts[0], dict):
+            return list(contexts)
+        return normalize_event_contexts(contexts)
+    return normalize_event_contexts(contexts)
 
 
 def _occurrence_list_pagination_row(view: OccurrenceListView) -> list[InlineKeyboardButton]:

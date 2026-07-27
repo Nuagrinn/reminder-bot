@@ -8,6 +8,19 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class EventContext:
+    id: str
+    event_id: str
+    kind: str
+    label: str
+    value: str
+    normalized_value: str
+    source: str
+    position: int
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class Event:
     id: str
     title: str
@@ -52,6 +65,7 @@ class OccurrenceView:
     next_notify_at: datetime | None
     all_day: bool = False
     source_text: str = ""
+    contexts: tuple[EventContext, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +82,7 @@ class NotificationJobView:
     job_status: str
     all_day: bool = False
     source_text: str = ""
+    contexts: tuple[EventContext, ...] = ()
 
 
 def event_from_row(row: Row) -> Event:
@@ -87,6 +102,20 @@ def event_from_row(row: Row) -> Event:
         source_kind=row["source_kind"],
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def event_context_from_row(row: Row) -> EventContext:
+    return EventContext(
+        id=row["id"],
+        event_id=row["event_id"],
+        kind=row["kind"],
+        label=row["label"],
+        value=row["value"],
+        normalized_value=row["normalized_value"],
+        source=row["source"],
+        position=int(row["position"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
     )
 
 

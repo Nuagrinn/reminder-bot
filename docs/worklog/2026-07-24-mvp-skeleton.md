@@ -745,6 +745,23 @@ Date: 2026-07-24
 - Added a regression test that asserts the status message exists before parser
   execution starts.
 
+## Due Notification Tomorrow Action
+
+- Clarified a confusing notification-card action:
+  - before: button `Завтра` used `snooze_job`, so it only moved the next
+    notification and left the occurrence date in the past;
+  - expected user behavior: pressing tomorrow on a task reminder should move
+    the task itself to tomorrow.
+- Updated due notification quick actions:
+  - `Напомнить +1ч` still snoozes only the notification;
+  - `На завтра` now routes to quick occurrence reschedule
+    `reschedule_quick:{occurrence_id}:occ:tomorrow`.
+- Added overdue visual markers in occurrence lists:
+  - date group starts with `⚠️ Просрочено`;
+  - overdue row title also starts with `⚠️`.
+- Added formatter regression tests for the new notification callbacks and
+  overdue list rendering.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

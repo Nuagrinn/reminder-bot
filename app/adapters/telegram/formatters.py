@@ -10,6 +10,7 @@ from app.adapters.telegram.occurrence_labels import compact_time_prefix
 from app.adapters.telegram.occurrence_labels import occurrence_when_label
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.adapters.telegram.occurrence_list_view import annual_day_label
+from app.adapters.telegram.occurrence_list_view import is_overdue_occurrence
 from app.adapters.telegram.occurrence_list_view import occurrence_group_key
 from app.adapters.telegram.occurrence_list_view import occurrence_group_label
 from app.adapters.telegram.occurrence_list_view import occurrence_list_header
@@ -268,7 +269,10 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
     marker = annual_day_label(item) if view.kind == "annual" else compact_time_prefix(item)
     marker_width = 5
     cell = f"{index} {marker:<{marker_width}}"
-    return f"<code>{h(cell)}</code> {h(item.title)}"
+    title = h(item.title)
+    if is_overdue_occurrence(item, view):
+        title = f"⚠️ {title}"
+    return f"<code>{h(cell)}</code> {title}"
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:

@@ -120,6 +120,8 @@ def occurrence_group_label(value: date, view: OccurrenceListView) -> str:
     relative = relative_day_label(value, anchor_date=view.anchor_date)
     if relative:
         label = f"{label} · {relative}"
+    if is_overdue_date(value, view):
+        label = f"⚠️ Просрочено · {label}"
     return label
 
 
@@ -137,6 +139,14 @@ def occurrence_group_key(item: OccurrenceView, view: OccurrenceListView) -> tupl
 def annual_day_label(item: OccurrenceView) -> str:
     value = item.occurs_at.date()
     return f"{value.day:02d} {weekday_label(value)}"
+
+
+def is_overdue_occurrence(item: OccurrenceView, view: OccurrenceListView) -> bool:
+    return is_overdue_date(item.occurs_at.date(), view)
+
+
+def is_overdue_date(value: date, view: OccurrenceListView) -> bool:
+    return view.kind != "annual" and value < view.anchor_date
 
 
 def relative_day_label(value: date, *, anchor_date: date) -> str:

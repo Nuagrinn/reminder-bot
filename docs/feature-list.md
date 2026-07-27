@@ -108,6 +108,9 @@ Date: 2026-07-24
    - Due notification cards include `Скрыть`.
    - The action deletes the Telegram notification card only.
    - It does not mark the reminder done, delete it, or reschedule anything.
+   - Due notification quick actions are explicit:
+     - `Напомнить +1ч` postpones only the notification;
+     - `На завтра` reschedules the reminder occurrence to tomorrow.
 
 9. Clarification diagnostics - done
    - `needs_clarification` parse results are logged at INFO level.

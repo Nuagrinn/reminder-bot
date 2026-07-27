@@ -78,8 +78,8 @@ def due_keyboard(job: NotificationJobView) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{job.occurrence_id}")],
             [
-                InlineKeyboardButton("Через 1 час", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:60"),
-                InlineKeyboardButton("Завтра", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:1440"),
+                InlineKeyboardButton("Напомнить +1ч", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:60"),
+                InlineKeyboardButton("На завтра", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{job.occurrence_id}:occ:tomorrow"),
             ],
             [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{job.occurrence_id}")],
             [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{job.occurrence_id}")],

@@ -124,7 +124,10 @@ class TelegramFormattersTest(TestCase):
         )
         keyboard = due_keyboard(job)
 
+        self.assertEqual(keyboard.inline_keyboard[1][0].text, "Напомнить +1ч")
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, f"{SNOOZE_PREFIX}job_1:60")
+        self.assertEqual(keyboard.inline_keyboard[1][1].text, "На завтра")
+        self.assertEqual(keyboard.inline_keyboard[1][1].callback_data, f"{RESCHEDULE_QUICK_PREFIX}occ_1:occ:tomorrow")
         self.assertEqual(keyboard.inline_keyboard[2][0].callback_data, f"{RESCHEDULE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{DELETE_MENU_PREFIX}occ_1")
         self.assertEqual(keyboard.inline_keyboard[4][0].callback_data, f"{HIDE_NOTIFICATION_PREFIX}job_1")
@@ -219,6 +222,22 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("<b>Сегодня · Вс 26.07</b>", text)
         self.assertNotIn("<b>Вс 26.07 · сегодня</b>", text)
         self.assertIn("<code>1      </code> Помыть машину", text)
+
+    def test_overdue_occurrence_list_has_warning_marker(self) -> None:
+        anchor = date(2026, 7, 27)
+        item = occurrence_at(
+            "occ_overdue",
+            "Подключить Spotify подписку",
+            datetime(2026, 7, 26, 9, 0),
+            all_day=True,
+            source_text="Завтра утром надо подключить Спотифай подписку.",
+        )
+        view = list_view([item], kind="today", title="Сегодня", anchor_date=anchor, days=1)
+
+        text = format_occurrence_list_view(view)
+
+        self.assertIn("<b>⚠️ Просрочено · Вс 26.07 · вчера</b>", text)
+        self.assertIn("<code>1 утро </code> ⚠️ Подключить Spotify подписку", text)
 
     def test_annual_list_groups_events_by_month(self) -> None:
         anchor = date(2026, 7, 26)

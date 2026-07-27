@@ -315,7 +315,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not text:
         await _answer_long(update, "Напиши текст после /add или просто отправь сообщение.", reply_markup=main_keyboard())
         return
-    await _preview_from_text(update, context, text, source_kind="text")
+    await _preview_text_with_status(update, context, text, source_kind="text")
 
 
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -347,7 +347,31 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if text in ("❔ Помощь", "Помощь"):
         await start(update, context)
         return
-    await _preview_from_text(update, context, text, source_kind="text")
+    await _preview_text_with_status(update, context, text, source_kind="text")
+
+
+async def _preview_text_with_status(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    *,
+    source_kind: str,
+) -> None:
+    wait_message = await _safe_reply_text(update.message, "Разбираю напоминание...") if update.message else None
+    try:
+        delivered_via_status = await _preview_from_text(
+            update,
+            context,
+            text,
+            source_kind=source_kind,
+            edit_message=wait_message,
+        )
+    except Exception:
+        log.exception("Text preview failed")
+        await _safe_edit_message(wait_message, "Не смог обработать сообщение. Попробуй сформулировать чуть иначе.")
+        return
+    if not delivered_via_status:
+        await _safe_delete_message(wait_message)
 
 
 async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

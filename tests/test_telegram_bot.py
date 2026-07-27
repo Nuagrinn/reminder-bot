@@ -20,6 +20,7 @@ from app.telegram_bot import (
     hide_notification_callback,
     list_page_callback,
     occurrence_detail_callback,
+    text_message,
 )
 
 
@@ -176,11 +177,28 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
         self.assertEqual(message.edits[0][0], "Уточняю напоминание...")
         self.assertIn("Проверь напоминание", message.edits[-1][0])
 
+    async def test_text_message_shows_processing_status_before_parse(self) -> None:
+        message = FakeReplyMessage(text="В среду в 10 утра передать деньги Алексею")
+        update = FakeUpdate(message=message, user_id=123)
+        services = FakeServices(items=[])
+        services.intake = FakeTextIntake(message)
+        context = FakeContext(owner_id=123, services=services)
+        now = datetime(2026, 7, 27, 11, 0)
+
+        with patch("app.telegram_bot.local_now", return_value=now):
+            await text_message(update, context)
+
+        self.assertEqual(message.replies[0][0], "Разбираю напоминание...")
+        status_message = message.replies[0][2]
+        self.assertIn("Проверь напоминание", status_message.edits[-1][0])
+        self.assertFalse(status_message.deleted)
+
 
 class FakeUpdate:
-    def __init__(self, *, message=None):
+    def __init__(self, *, message=None, user_id: int | None = None):
         self.message = message
         self.callback_query = None
+        self.effective_user = FakeUser(user_id) if user_id is not None else None
 
 
 class FakeCallbackUpdate:
@@ -233,9 +251,13 @@ class FakeDeletableMessage:
 class FakeEditMessage:
     def __init__(self) -> None:
         self.edits = []
+        self.deleted = False
 
     async def edit_text(self, text: str, **kwargs) -> None:
         self.edits.append((text, kwargs))
+
+    async def delete(self) -> None:
+        self.deleted = True
 
 
 class FailingEditMessage:
@@ -244,11 +266,14 @@ class FailingEditMessage:
 
 
 class FakeReplyMessage:
-    def __init__(self) -> None:
+    def __init__(self, *, text: str = "") -> None:
+        self.text = text
         self.replies = []
 
     async def reply_text(self, text: str, **kwargs) -> None:
-        self.replies.append((text, kwargs))
+        status_message = FakeEditMessage()
+        self.replies.append((text, kwargs, status_message))
+        return status_message
 
 
 class FakeServices:
@@ -315,6 +340,31 @@ class FakeClarificationIntake:
                     {
                         "title": "Купить кофе",
                         "schedule": {"date": "2026-07-26"},
+                        "notification_offsets": [],
+                    }
+                ],
+            },
+            provider="test",
+            model="test",
+        )
+
+
+class FakeTextIntake:
+    def __init__(self, message: FakeReplyMessage):
+        self.message = message
+
+    def parse(self, request: ReminderParseRequest) -> ReminderParseResult:
+        assert self.message.replies[0][0] == "Разбираю напоминание..."
+        assert request.raw_text == "В среду в 10 утра передать деньги Алексею"
+        assert request.source_kind == "text"
+        return ReminderParseResult(
+            payload={
+                "intent": "create",
+                "status": "ok",
+                "items": [
+                    {
+                        "title": "Передать деньги Алексею",
+                        "schedule": {"date": "2026-07-29", "time": "10:00"},
                         "notification_offsets": [],
                     }
                 ],

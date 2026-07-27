@@ -728,6 +728,23 @@ Date: 2026-07-24
   - clarification callback test now freezes `local_now`, so it does not fail
     when the real calendar date changes.
 
+## Text Intake Processing Status
+
+- Investigated a Telegram UX gap:
+  - voice input replied immediately with `Распознаю голосовое...`;
+  - plain text input went straight into parser/Claude work without any visible
+    status;
+  - reminders could be parsed and saved successfully, but the chat looked idle
+    while the bot was thinking.
+- Added `_preview_text_with_status`:
+  - sends `Разбираю напоминание...` immediately for plain text reminders;
+  - reuses the same status message as the final confirmation card when possible;
+  - deletes the status card if Telegram editing fails and the result has to be
+    sent as a separate reply.
+- Applied the same flow to `/add ...`.
+- Added a regression test that asserts the status message exists before parser
+  execution starts.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

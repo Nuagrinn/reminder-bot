@@ -225,19 +225,28 @@ class TelegramFormattersTest(TestCase):
 
     def test_overdue_occurrence_list_has_warning_marker(self) -> None:
         anchor = date(2026, 7, 27)
-        item = occurrence_at(
+        overdue = occurrence_at(
             "occ_overdue",
             "Подключить Spotify подписку",
             datetime(2026, 7, 26, 9, 0),
             all_day=True,
             source_text="Завтра утром надо подключить Спотифай подписку.",
         )
-        view = list_view([item], kind="today", title="Сегодня", anchor_date=anchor, days=1)
+        today_item = occurrence_at(
+            "occ_today",
+            "Тренировка",
+            datetime(2026, 7, 27, 20, 0),
+            all_day=False,
+            source_text="Сегодня вечером тренировка.",
+        )
+        view = list_view([overdue, today_item], kind="today", title="Сегодня", anchor_date=anchor, days=1)
 
         text = format_occurrence_list_view(view)
 
         self.assertIn("<b>⚠️ Просрочено · Вс 26.07 · вчера</b>", text)
         self.assertIn("<code>1 утро </code> ⚠️ Подключить Spotify подписку", text)
+        self.assertIn("Подключить Spotify подписку\n\n<b>Пн 27.07 · сегодня</b>", text)
+        self.assertIn("<code>2 вечер</code> Тренировка", text)
 
     def test_annual_list_groups_events_by_month(self) -> None:
         anchor = date(2026, 7, 26)

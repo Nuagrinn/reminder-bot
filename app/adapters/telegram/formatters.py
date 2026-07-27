@@ -101,6 +101,8 @@ def format_occurrence_list_view(view: OccurrenceListView) -> str:
         item_date = item.occurs_at.date()
         group_key = occurrence_group_key(item, view)
         if not view.suppress_single_day_group and group_key != current_group:
+            if current_group is not None:
+                lines.append("")
             current_group = group_key
             lines.append(f"<b>{h(occurrence_group_label(item_date, view))}</b>")
         lines.append(_format_occurrence_list_row(index, item, view))

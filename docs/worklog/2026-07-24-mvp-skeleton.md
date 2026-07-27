@@ -759,6 +759,8 @@ Date: 2026-07-24
 - Added overdue visual markers in occurrence lists:
   - date group starts with `⚠️ Просрочено`;
   - overdue row title also starts with `⚠️`.
+- Added an empty line between occurrence date groups so overdue and current
+  groups are visually separated in Telegram cards.
 - Added formatter regression tests for the new notification callbacks and
   overdue list rendering.
 

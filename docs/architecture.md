@@ -24,7 +24,7 @@ Telegram text/voice
 - Voice intake through `assistant_toolkit.speech`.
 - Fake parser for local no-LLM development.
 - Claude CLI parser through `assistant_toolkit.llm.StructuredClaudeRunner`.
-- Claude prompt/schema version `reminder-parser-v3`.
+- Claude prompt/schema version `reminder-parser-v4`.
 - Compact Claude JSON normalization before persistence.
 - Temporal-profile notification policy before persistence.
 - One-off events.
@@ -86,6 +86,10 @@ app/
       factory.py
       prompt.py
       schema.py
+      service.py
+    shopping_lists/
+      models.py
+      parser.py
       service.py
     events/
       models.py
@@ -171,6 +175,33 @@ Occurrence and due-job views attach event contexts after the main SQLite query.
 Telegram lists stay compact and show context as front markers (`🔗` / `📍`) with
 a bolded title; confirmation, saved result, detail cards and due notifications
 show the short context line and add URL/map buttons.
+
+## Shopping Lists
+
+Shopping reminders reuse the normal `events` scheduling shell. The event stores
+date, time, recurrence, notification rules and occurrence state. The mutable
+checklist lives in separate tables:
+
+- `shopping_lists`: one active list per event;
+- `shopping_items`: ordered nested items with `open`, `done` and `deleted`
+  statuses.
+
+The parser keeps `event_type='task'` and adds optional structured
+`content.kind='shopping_list'`. This avoids expanding event categories for a
+domain-specific subtype while still giving Telegram and persistence enough
+structure to render and edit nested items.
+
+Telegram shopping cards support:
+
+- opening the shopping reminder from normal occurrence lists;
+- item number buttons that open per-item actions;
+- marking an item bought or returning it to open;
+- soft-deleting an item;
+- `Добавить`, which accepts the next text or voice message as more items;
+- normal reminder actions: done, reschedule, delete and hide.
+
+If a shopping phrase has no explicit date/time, the bot treats it as a same-day
+all-day task and applies the existing day-task notification policy.
 
 ## Annual Events View
 

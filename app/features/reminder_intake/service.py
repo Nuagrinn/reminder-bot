@@ -16,6 +16,9 @@ from app.features.reminder_intake.agent import (
     ReminderParseResult,
     ReminderParserAgent,
 )
+from app.features.shopping_lists.parser import coerce_shopping_drafts
+from app.features.shopping_lists.parser import normalize_shopping_content
+from app.features.shopping_lists.service import ShoppingListService
 
 
 log = logging.getLogger(__name__)
@@ -33,10 +36,12 @@ class ReminderIntakeService:
         db: Database,
         parser: ReminderParserAgent,
         events: EventService,
+        shopping_lists: ShoppingListService | None = None,
     ):
         self.db = db
         self.parser = parser
         self.events = events
+        self.shopping_lists = shopping_lists
 
     def ingest(self, request: ReminderParseRequest) -> IntakeResult:
         parse_result = self.parse(request)
@@ -88,6 +93,7 @@ class ReminderIntakeService:
                         now=request.now,
                     )
                     event_ids.append(event.id)
+                    self._create_shopping_list_if_needed(event.id, item, request=request)
         self._record_attempt(
             attempt_id=attempt_id,
             request=request,
@@ -135,6 +141,31 @@ class ReminderIntakeService:
                     iso(created_at),
                 ),
             )
+
+    def _create_shopping_list_if_needed(
+        self,
+        event_id: str,
+        item: dict,
+        *,
+        request: ReminderParseRequest,
+    ) -> None:
+        if self.shopping_lists is None:
+            return
+        content = normalize_shopping_content(item.get("content"))
+        if not content:
+            return
+        shopping_list = content.get("shopping_list") if isinstance(content.get("shopping_list"), dict) else {}
+        drafts = coerce_shopping_drafts(shopping_list.get("items"))
+        if not drafts:
+            return
+        self.shopping_lists.create_for_event(
+            event_id,
+            title=str(shopping_list.get("title") or "Покупки"),
+            items=drafts,
+            source_text=request.raw_text,
+            source_kind=request.source_kind,
+            now=request.now,
+        )
 
 
 def _failed_parse_result(

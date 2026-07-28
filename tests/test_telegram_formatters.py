@@ -15,6 +15,8 @@ from app.adapters.telegram.formatters import (
     format_parse_confirmation,
     format_reschedule_menu,
     format_rescheduled,
+    format_shopping_detail,
+    format_shopping_due_notification,
 )
 from app.adapters.telegram.keyboards import (
     CLARIFY_CANCEL_PREFIX,
@@ -45,6 +47,9 @@ from app.adapters.telegram.keyboards import (
     occurrence_list_keyboard,
     reschedule_options_keyboard,
     reschedule_scope_keyboard,
+    shopping_due_keyboard,
+    shopping_item_keyboard,
+    shopping_list_keyboard,
 )
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
 from app.features.events.models import EventContext
@@ -52,6 +57,10 @@ from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import FakeReminderParserAgent, ReminderParseResult
+from app.features.shopping_lists.models import SHOPPING_ITEM_DONE
+from app.features.shopping_lists.models import ShoppingItem
+from app.features.shopping_lists.models import ShoppingList
+from app.features.shopping_lists.models import ShoppingListDetail
 from tests.test_fake_parser import request
 
 
@@ -182,8 +191,70 @@ class TelegramFormattersTest(TestCase):
 
         self.assertIn("🗓 Неделя", labels)
         self.assertIn("🗂 Месяц", labels)
+        self.assertIn("🛒 Покупки", labels)
         self.assertIn("🎂 Ежегодные", labels)
         self.assertIn("🌅 Утро", labels)
+
+    def test_shopping_confirmation_shows_nested_items(self) -> None:
+        parse_result = FakeReminderParserAgent().parse(request("купить молоко, хлеб, яйца"))
+        annotate_notification_preview(
+            parse_result.payload,
+            now=datetime(2026, 7, 24, 12, 0),
+            defaults=EventDefaults(timezone="Europe/Moscow"),
+        )
+
+        text = format_parse_confirmation(parse_result)
+
+        self.assertIn("Покупки", text)
+        self.assertIn("<code>1 </code> молоко", text)
+        self.assertIn("<code>2 </code> хлеб", text)
+        self.assertIn("<code>3 </code> яйца", text)
+
+    def test_shopping_detail_and_keyboard_show_items(self) -> None:
+        detail = shopping_detail()
+        occurrence_item = occurrence()
+
+        text = format_shopping_detail(detail, occurrence_item)
+        keyboard = shopping_list_keyboard(detail, occurrence_id=occurrence_item.occurrence_id)
+
+        self.assertIn("<code>1 </code> □ молоко", text)
+        self.assertIn("<code>2 </code> ✓ хлеб", text)
+        self.assertEqual([button.text for button in keyboard.inline_keyboard[0]], ["1", "2"])
+        self.assertEqual(keyboard.inline_keyboard[1][0].text, "Добавить")
+        self.assertEqual(keyboard.inline_keyboard[2][0].text, "Готово")
+
+    def test_shopping_item_keyboard_can_toggle_and_delete(self) -> None:
+        item = shopping_detail().items[1]
+
+        keyboard = shopping_item_keyboard(item, occurrence_id="occ_1")
+
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "Вернуть")
+        self.assertIn(item.id, keyboard.inline_keyboard[0][0].callback_data)
+        self.assertEqual(keyboard.inline_keyboard[1][0].text, "Удалить")
+
+    def test_shopping_due_notification_keeps_snooze_actions(self) -> None:
+        detail = shopping_detail()
+        job = NotificationJobView(
+            job_id="job_1",
+            event_id=detail.shopping_list.event_id,
+            occurrence_id="occ_1",
+            notification_rule_id="rule_1",
+            title="Покупки",
+            description="",
+            event_type="task",
+            occurs_at=datetime(2026, 7, 25, 9, 0),
+            notify_at=datetime(2026, 7, 25, 9, 0),
+            job_status="pending",
+            all_day=True,
+        )
+
+        text = format_shopping_due_notification(job, detail)
+        keyboard = shopping_due_keyboard(job, detail)
+
+        self.assertIn("Покупки", text)
+        self.assertIn("□ молоко", text)
+        self.assertEqual(keyboard.inline_keyboard[1][0].text, "Добавить")
+        self.assertEqual(keyboard.inline_keyboard[3][0].callback_data, f"{SNOOZE_PREFIX}job_1:60")
 
     def test_daily_agenda_settings_keyboard_toggles_state(self) -> None:
         enabled_keyboard = daily_agenda_settings_keyboard(enabled=True)
@@ -543,6 +614,52 @@ def address_context() -> EventContext:
         source="extracted",
         position=0,
         created_at=datetime(2026, 7, 24, 12, 0),
+    )
+
+
+def shopping_detail() -> ShoppingListDetail:
+    created = datetime(2026, 7, 24, 12, 0)
+    return ShoppingListDetail(
+        shopping_list=ShoppingList(
+            id="shop_1",
+            event_id="evt_1",
+            title="Покупки",
+            status="active",
+            source_text="купить молоко, хлеб",
+            source_kind="text",
+            created_at=created,
+            updated_at=created,
+        ),
+        items=(
+            ShoppingItem(
+                id="shopi_1",
+                shopping_list_id="shop_1",
+                title="молоко",
+                quantity="",
+                note="",
+                status="open",
+                position=1,
+                source_text="купить молоко, хлеб",
+                source_kind="text",
+                created_at=created,
+                updated_at=created,
+                completed_at=None,
+            ),
+            ShoppingItem(
+                id="shopi_2",
+                shopping_list_id="shop_1",
+                title="хлеб",
+                quantity="",
+                note="",
+                status=SHOPPING_ITEM_DONE,
+                position=2,
+                source_text="купить молоко, хлеб",
+                source_kind="text",
+                created_at=created,
+                updated_at=created,
+                completed_at=created,
+            ),
+        ),
     )
 
 

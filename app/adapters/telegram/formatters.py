@@ -23,6 +23,10 @@ from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import ReminderParseResult
 from app.features.reminder_intake.clarification import normalize_clarification
 from app.features.reminder_intake.service import IntakeResult
+from app.features.shopping_lists.models import SHOPPING_ITEM_DONE
+from app.features.shopping_lists.models import ShoppingItem
+from app.features.shopping_lists.models import ShoppingListDetail
+from app.features.shopping_lists.parser import normalize_shopping_content
 
 
 def format_start() -> str:
@@ -33,8 +37,9 @@ def format_start() -> str:
         "- <code>надо завтра пополнить карту наличкой</code>\n"
         "- <code>через 2 часа проверить духовку</code>\n"
         "- <code>каждый вторник обновить отчет по калориям</code>\n"
-        "- <code>12 августа день рождения Маши</code>\n\n"
-        "Команды: /today, /week, /month, /upcoming, /annual, /morning, /add"
+        "- <code>12 августа день рождения Маши</code>\n"
+        "- <code>купить молоко, хлеб, яйца</code>\n\n"
+        "Команды: /today, /week, /month, /upcoming, /annual, /shopping, /morning, /add"
     )
 
 
@@ -50,11 +55,15 @@ def format_parse_confirmation(parse_result: ReminderParseResult) -> str:
     lines = ["<b>Проверь напоминание</b>", ""]
     for index, item in enumerate(items[:5], start=1):
         prefix = f"{index}. " if len(items) > 1 else ""
-        lines.append(f"{prefix}<b>{h(_item_title(item))}</b>")
+        shopping_items = _shopping_parse_items(item)
+        title = "Покупки" if shopping_items else _item_title(item)
+        lines.append(f"{prefix}<b>{h(title)}</b>")
         lines.append(f"Когда: <code>{h(_schedule_label(item))}</code>")
         repeat = _recurrence_label(item)
         if repeat:
             lines.append(f"Повтор: <code>{h(repeat)}</code>")
+        if shopping_items:
+            lines.extend(_shopping_parse_item_lines(shopping_items))
         lines.extend(_context_lines(_item_contexts(item)))
         lines.append(f"Напомню: <code>{h(_notification_label(item))}</code>")
         lines.append("")
@@ -70,9 +79,19 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
         return "Не смог создать напоминание. Попробуй написать дату точнее."
 
     lines = ["<b>Запланировал</b>", ""]
+    parse_items = [item for item in payload.get("items", []) if isinstance(item, dict)]
+    item_by_event_id = {
+        event_id: parse_items[index]
+        for index, event_id in enumerate(result.event_ids)
+        if index < len(parse_items)
+    }
     for occurrence in occurrences[:10]:
-        lines.append(f"• <b>{h(occurrence.title)}</b>")
+        shopping_items = _shopping_parse_items(item_by_event_id.get(occurrence.event_id, {}))
+        title = "Покупки" if shopping_items else occurrence.title
+        lines.append(f"• <b>{h(title)}</b>")
         lines.append(f"  Событие: <code>{occurrence_when_label(occurrence)}</code>")
+        if shopping_items:
+            lines.extend(_shopping_parse_item_lines(shopping_items, prefix="  "))
         lines.extend(_context_lines(occurrence.contexts, prefix="  "))
         if occurrence.next_notify_at:
             lines.append(f"  Напомню: <code>{_date_time_label(occurrence.next_notify_at)}</code>")
@@ -174,6 +193,59 @@ def format_due_notification(job: NotificationJobView) -> str:
         f"План: <code>{job_when_label(job)}</code>",
     ]
     lines.extend(_context_lines(job.contexts))
+    return "\n".join(lines)
+
+
+def format_shopping_detail(detail: ShoppingListDetail, occurrence: OccurrenceView) -> str:
+    lines = [
+        "<b>Покупки</b>",
+        "",
+        f"Когда: <code>{occurrence_when_label(occurrence)}</code>",
+    ]
+    if occurrence.next_notify_at:
+        lines.append(f"Следующее уведомление: <code>{_date_time_label(occurrence.next_notify_at)}</code>")
+    lines.append("")
+    lines.extend(_shopping_detail_lines(detail))
+    return "\n".join(lines)
+
+
+def format_shopping_due_notification(job: NotificationJobView, detail: ShoppingListDetail) -> str:
+    lines = [
+        "<b>Напоминание</b>",
+        "",
+        "<b>Покупки</b>",
+        f"План: <code>{job_when_label(job)}</code>",
+        "",
+    ]
+    lines.extend(_shopping_detail_lines(detail, open_first=True))
+    return "\n".join(lines)
+
+
+def format_shopping_add_prompt(detail: ShoppingListDetail, occurrence: OccurrenceView) -> str:
+    lines = [
+        "<b>Добавить в покупки</b>",
+        "",
+        f"Когда: <code>{occurrence_when_label(occurrence)}</code>",
+        "",
+        "Пришли товары одним сообщением или голосом.",
+        "Например: <code>сыр, кофе, яйца</code>",
+    ]
+    if detail.items:
+        lines.extend(["", "<b>Сейчас в списке</b>"])
+        lines.extend(_shopping_detail_lines(detail))
+    return "\n".join(lines)
+
+
+def format_shopping_item_menu(detail: ShoppingListDetail, item: ShoppingItem, occurrence: OccurrenceView) -> str:
+    status = "куплено" if item.status == SHOPPING_ITEM_DONE else "нужно купить"
+    lines = [
+        "<b>Товар</b>",
+        "",
+        f"<b>{h(_shopping_item_title(item))}</b>",
+        f"Статус: <code>{status}</code>",
+        f"Список: <code>{h(detail.shopping_list.title)}</code>",
+        f"Когда: <code>{occurrence_when_label(occurrence)}</code>",
+    ]
     return "\n".join(lines)
 
 
@@ -289,6 +361,66 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
     if marker:
         title = f"{h(marker)} <b>{title}</b>"
     return f"<code>{h(cell)}</code> {title}"
+
+
+def _shopping_parse_items(item: dict[str, Any]) -> list[dict[str, str]]:
+    content = normalize_shopping_content(item.get("content"))
+    if not content:
+        return []
+    shopping_list = content.get("shopping_list") if isinstance(content.get("shopping_list"), dict) else {}
+    raw_items = shopping_list.get("items") if isinstance(shopping_list.get("items"), list) else []
+    items: list[dict[str, str]] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        title = str(raw_item.get("title") or "").strip()
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "quantity": str(raw_item.get("quantity") or "").strip(),
+                "note": str(raw_item.get("note") or "").strip(),
+            }
+        )
+    return items
+
+
+def _shopping_parse_item_lines(items: list[dict[str, str]], *, prefix: str = "") -> list[str]:
+    lines = [f"{prefix}Список:"]
+    for index, item in enumerate(items[:12], start=1):
+        title = item["title"]
+        if item["quantity"]:
+            title = f"{title} · {item['quantity']}"
+        lines.append(f"{prefix}<code>{index:<2}</code> {h(title)}")
+    if len(items) > 12:
+        lines.append(f"{prefix}...и еще {len(items) - 12}")
+    return lines
+
+
+def _shopping_detail_lines(detail: ShoppingListDetail, *, open_first: bool = False) -> list[str]:
+    items = list(detail.items)
+    if open_first:
+        items.sort(key=lambda item: (item.status == SHOPPING_ITEM_DONE, item.position))
+    if not items:
+        return ["Список пуст."]
+    lines: list[str] = []
+    for index, item in enumerate(items[:20], start=1):
+        marker = "✓" if item.status == SHOPPING_ITEM_DONE else "□"
+        title = _shopping_item_title(item)
+        lines.append(f"<code>{index:<2}</code> {marker} {h(title)}")
+    if len(items) > 20:
+        lines.append(f"...и еще {len(items) - 20}")
+    return lines
+
+
+def _shopping_item_title(item: ShoppingItem) -> str:
+    title = item.title
+    if item.quantity:
+        title = f"{title} · {item.quantity}"
+    if item.note:
+        title = f"{title} ({item.note})"
+    return title
 
 
 def _format_clarification(payload: dict[str, Any]) -> str:

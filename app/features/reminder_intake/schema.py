@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-PROMPT_VERSION = "reminder-parser-v3"
+PROMPT_VERSION = "reminder-parser-v4"
 
 REMINDER_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -67,6 +67,35 @@ REMINDER_JSON_SCHEMA: dict[str, Any] = {
                                     "properties": {
                                         "address": {"type": "string"},
                                         "label": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "content": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["kind", "shopping_list"],
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["shopping_list"]},
+                            "shopping_list": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["title", "items"],
+                                "properties": {
+                                    "title": {"type": "string"},
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": False,
+                                            "required": ["title", "quantity", "note"],
+                                            "properties": {
+                                                "title": {"type": "string"},
+                                                "quantity": {"type": "string"},
+                                                "note": {"type": "string"},
+                                            },
+                                        },
                                     },
                                 },
                             },

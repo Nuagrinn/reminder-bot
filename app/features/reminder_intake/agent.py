@@ -13,6 +13,8 @@ from app.features.notifications.policy import VALID_TEMPORAL_PROFILES, derive_te
 from app.features.reminder_intake.clarification import normalize_clarification
 from app.features.reminder_intake.clarification import normalize_payload_clarification
 from app.features.reminder_intake.schema import PROMPT_VERSION, REMINDER_JSON_SCHEMA
+from app.features.shopping_lists.parser import normalize_shopping_content
+from app.features.shopping_lists.parser import shopping_content_from_text
 
 
 WEEKDAYS_RU = {
@@ -159,6 +161,7 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
     all_day = True
     title_source = text
     temporal_profile = "floating"
+    shopping_content = shopping_content_from_text(text)
 
     daily_interval = _daily_interval(low)
     if daily_interval:
@@ -243,6 +246,26 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
             temporal_profile = str(target.get("temporal_profile") or ("exact_time" if target["time"] else "day_task"))
             title_source = _strip_time_words(text)
 
+    if schedule is None and shopping_content:
+        target = _one_off_datetime(low, request.now)
+        if target:
+            all_day = target["time"] is None
+            schedule = {
+                "kind": "once",
+                "timezone": request.timezone,
+                "all_day": all_day,
+                "start_at": target["start_at"],
+                "date": target["date"],
+                "time": target["time"],
+                "precision": "datetime" if target["time"] else "date",
+                "recurrence": recurrence,
+            }
+            temporal_profile = str(target.get("temporal_profile") or ("exact_time" if target["time"] else "day_task"))
+        else:
+            schedule = _shopping_default_schedule(request)
+            temporal_profile = "day_task"
+        title_source = _shopping_content_title(shopping_content)
+
     if schedule is None:
         return _clarification(text, "Когда напомнить?", ["сегодня", "завтра", "через час"])
 
@@ -259,6 +282,9 @@ def fake_parse_payload(request: ReminderParseRequest) -> dict[str, Any]:
         "confidence": 0.75,
         "assumptions": ["Fake parser: локальная эвристика без LLM."],
     }
+    if shopping_content:
+        item["title"] = _shopping_content_title(shopping_content)
+        item["content"] = shopping_content
     return _base(text, items=[item])
 
 
@@ -297,6 +323,65 @@ def _one_off_datetime(low: str, now: datetime) -> dict[str, Any] | None:
     return {"start_at": None, "date": target_date.isoformat(), "time": None, "temporal_profile": "day_task"}
 
 
+def _shopping_payload_from_text(raw_text: str, request: ReminderParseRequest) -> dict[str, Any] | None:
+    content = shopping_content_from_text(raw_text)
+    if not content:
+        return None
+    target = _one_off_datetime(raw_text.lower(), request.now)
+    if target:
+        schedule = {
+            "kind": "once",
+            "timezone": request.timezone,
+            "all_day": target["time"] is None,
+            "start_at": target["start_at"],
+            "date": target["date"],
+            "time": target["time"],
+            "precision": "datetime" if target["time"] else "date",
+            "recurrence": _recurrence_none(),
+        }
+        temporal_profile = str(target.get("temporal_profile") or ("exact_time" if target["time"] else "day_task"))
+    else:
+        schedule = _shopping_default_schedule(request)
+        temporal_profile = "day_task"
+    return _base(
+        raw_text,
+        items=[
+            {
+                "client_ref": "item_1",
+                "title": _shopping_content_title(content),
+                "description": "",
+                "context": normalize_event_contexts(None, raw_text=raw_text, include_extracted=True),
+                "event_type": "task",
+                "temporal_profile": temporal_profile,
+                "priority": "normal",
+                "schedule": schedule,
+                "notification_offsets": [],
+                "confidence": 0.8,
+                "assumptions": ["Shopping list inferred from shopping phrasing."],
+                "content": content,
+            }
+        ],
+    )
+
+
+def _shopping_default_schedule(request: ReminderParseRequest) -> dict[str, Any]:
+    return {
+        "kind": "once",
+        "timezone": request.timezone,
+        "all_day": True,
+        "start_at": None,
+        "date": request.now.date().isoformat(),
+        "time": None,
+        "precision": "date",
+        "recurrence": _recurrence_none(),
+    }
+
+
+def _shopping_content_title(content: dict[str, Any]) -> str:
+    shopping_list = content.get("shopping_list") if isinstance(content.get("shopping_list"), dict) else {}
+    return _clean(shopping_list.get("title")) or "Покупки"
+
+
 def _relative_delay_target(raw_text: str, *, now: datetime) -> datetime | None:
     low = raw_text.lower()
     rel = re.search(
@@ -320,13 +405,21 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
         return _clarification(request.raw_text, "Не удалось разобрать ответ парсера.", [])
     if _is_native_payload(payload):
         native_payload = normalize_payload_clarification(payload)
+        if native_payload.get("status") == "needs_clarification":
+            shopping_payload = _shopping_payload_from_text(_clean(native_payload.get("raw_text")) or request.raw_text, request)
+            if shopping_payload:
+                return shopping_payload
         native_payload = _normalize_native_payload_schedules(native_payload, request)
         native_payload = _normalize_native_payload_contexts(native_payload, request)
-        return _normalize_native_payload_titles(native_payload, request)
+        native_payload = _normalize_native_payload_titles(native_payload, request)
+        return _normalize_native_payload_shopping_content(native_payload, request)
 
     compact = payload.get("reminder") if isinstance(payload.get("reminder"), dict) else payload
     raw_text = _clean(compact.get("raw_text")) or _clean(payload.get("raw_text")) or request.raw_text
     if _compact_is_error(payload) or _compact_is_error(compact):
+        shopping_payload = _shopping_payload_from_text(raw_text, request)
+        if shopping_payload:
+            return shopping_payload
         question = str(
             compact.get("message")
             or compact.get("reason")
@@ -434,6 +527,18 @@ def normalize_claude_payload(payload: dict[str, Any], request: ReminderParseRequ
         "confidence": _coerce_float(compact.get("confidence") or payload.get("confidence"), default=0.7),
         "assumptions": ["Claude compact output normalized by reminder-bot."],
     }
+    shopping_content = normalize_shopping_content(
+        compact.get("content")
+        or compact.get("shopping_list")
+        or compact.get("shopping_items")
+        or compact.get("products")
+    )
+    if not shopping_content:
+        shopping_content = shopping_content_from_text(raw_text)
+    if shopping_content:
+        item["title"] = _shopping_content_title(shopping_content)
+        item["event_type"] = "task"
+        item["content"] = shopping_content
     if not item["temporal_profile"]:
         item["temporal_profile"] = "moment_reminder" if _looks_like_moment_reminder(raw_text) else derive_temporal_profile(item)
     return _base(raw_text, items=[item])
@@ -474,6 +579,30 @@ def _normalize_native_payload_contexts(payload: dict[str, Any], request: Reminde
             raw_text=raw_text,
             include_extracted=single_item,
         )
+    return payload
+
+
+def _normalize_native_payload_shopping_content(payload: dict[str, Any], request: ReminderParseRequest) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return payload
+    raw_text = _clean(payload.get("raw_text")) or request.raw_text
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        content = normalize_shopping_content(
+            item.get("content")
+            or item.get("shopping_list")
+            or item.get("shopping_items")
+            or item.get("products")
+        )
+        if not content:
+            content = shopping_content_from_text(raw_text)
+        if not content:
+            continue
+        item["title"] = _shopping_content_title(content)
+        item["event_type"] = "task"
+        item["content"] = content
     return payload
 
 

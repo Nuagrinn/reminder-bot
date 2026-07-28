@@ -45,6 +45,10 @@ from app.adapters.telegram.formatters import (
     format_rescheduled,
     format_series_deleted,
     format_series_stopped,
+    format_shopping_add_prompt,
+    format_shopping_detail,
+    format_shopping_due_notification,
+    format_shopping_item_menu,
     format_snoozed,
     format_start,
 )
@@ -70,6 +74,12 @@ from app.adapters.telegram.keyboards import (
     RESCHEDULE_MENU_PREFIX,
     RESCHEDULE_QUICK_PREFIX,
     RESCHEDULE_SCOPE_PREFIX,
+    SHOPPING_ADD_CANCEL_PREFIX,
+    SHOPPING_ADD_PREFIX,
+    SHOPPING_BACK_PREFIX,
+    SHOPPING_ITEM_DELETE_PREFIX,
+    SHOPPING_ITEM_MENU_PREFIX,
+    SHOPPING_ITEM_TOGGLE_PREFIX,
     SNOOZE_PREFIX,
     clarification_keyboard,
     confirmation_keyboard,
@@ -81,6 +91,10 @@ from app.adapters.telegram.keyboards import (
     occurrence_list_keyboard,
     reschedule_options_keyboard,
     reschedule_scope_keyboard,
+    shopping_add_keyboard,
+    shopping_due_keyboard,
+    shopping_item_keyboard,
+    shopping_list_keyboard,
 )
 from app.adapters.telegram.occurrence_list_view import DEFAULT_LIST_PAGE_SIZE
 from app.adapters.telegram.occurrence_list_view import OccurrenceListView
@@ -91,12 +105,15 @@ from app.features.events.context import normalize_event_contexts
 from app.features.events.reschedule import RescheduleParseError, parse_reschedule_target, quick_reschedule_target
 from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.features.reminder_intake.clarification import clarification_options_from_payload
+from app.features.shopping_lists.parser import looks_like_shopping_text
+from app.features.shopping_lists.parser import parse_shopping_items
 from app.services import AppServices
 
 
 log = logging.getLogger(__name__)
 PENDING_TTL_MINUTES = 30
 PENDING_RESCHEDULE_TTL_MINUTES = 15
+PENDING_SHOPPING_TTL_MINUTES = 15
 
 
 @dataclass(frozen=True)
@@ -110,6 +127,18 @@ class PendingReminder:
 class PendingReschedule:
     occurrence_id: str
     scope: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class PendingShoppingAdd:
+    list_id: str
+    occurrence_id: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class PendingShoppingCreate:
     created_at: datetime
 
 
@@ -149,6 +178,12 @@ def _cleanup_pending(context: ContextTypes.DEFAULT_TYPE, *, now: datetime) -> No
     pending_reschedule = _pending_reschedule(context)
     if pending_reschedule and pending_reschedule.created_at < now - timedelta(minutes=PENDING_RESCHEDULE_TTL_MINUTES):
         _clear_pending_reschedule(context)
+    pending_shopping_add = _pending_shopping_add(context)
+    if pending_shopping_add and pending_shopping_add.created_at < now - timedelta(minutes=PENDING_SHOPPING_TTL_MINUTES):
+        _clear_pending_shopping_add(context)
+    pending_shopping_create = _pending_shopping_create(context)
+    if pending_shopping_create and pending_shopping_create.created_at < now - timedelta(minutes=PENDING_SHOPPING_TTL_MINUTES):
+        _clear_pending_shopping_create(context)
 
 
 def _pending_reschedule(context: ContextTypes.DEFAULT_TYPE) -> PendingReschedule | None:
@@ -166,6 +201,41 @@ def _clear_pending_reschedule(context: ContextTypes.DEFAULT_TYPE, *, occurrence_
     if occurrence_id and pending.occurrence_id != occurrence_id:
         return
     context.user_data.pop("pending_reschedule", None)
+
+
+def _pending_shopping_add(context: ContextTypes.DEFAULT_TYPE) -> PendingShoppingAdd | None:
+    return context.user_data.get("pending_shopping_add")
+
+
+def _set_pending_shopping_add(context: ContextTypes.DEFAULT_TYPE, pending: PendingShoppingAdd) -> None:
+    context.user_data["pending_shopping_add"] = pending
+    _clear_pending_shopping_create(context)
+
+
+def _clear_pending_shopping_add(context: ContextTypes.DEFAULT_TYPE, *, occurrence_id: str | None = None) -> None:
+    pending = _pending_shopping_add(context)
+    if not pending:
+        return
+    if occurrence_id and pending.occurrence_id != occurrence_id:
+        return
+    context.user_data.pop("pending_shopping_add", None)
+
+
+def _pending_shopping_create(context: ContextTypes.DEFAULT_TYPE) -> PendingShoppingCreate | None:
+    return context.user_data.get("pending_shopping_create")
+
+
+def _set_pending_shopping_create(context: ContextTypes.DEFAULT_TYPE, pending: PendingShoppingCreate) -> None:
+    context.user_data["pending_shopping_create"] = pending
+    _clear_pending_shopping_add(context)
+
+
+def _clear_pending_shopping_create(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("pending_shopping_create", None)
+
+
+def _has_pending_shopping(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    return bool(_pending_shopping_add(context) or _pending_shopping_create(context))
 
 
 async def _reject_non_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -286,6 +356,31 @@ async def daily_agenda_settings(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+async def shopping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    _cleanup_pending(context, now=now)
+    found = await _first_upcoming_shopping_list(services, now=now)
+    if found:
+        occurrence, detail = found
+        await _answer_long(
+            update,
+            format_shopping_detail(detail, occurrence),
+            parse_mode=ParseMode.HTML,
+            reply_markup=shopping_list_keyboard(detail, occurrence_id=occurrence.occurrence_id),
+        )
+        return
+    _set_pending_shopping_create(context, PendingShoppingCreate(created_at=now))
+    await _answer_long(
+        update,
+        "Пришли список покупок текстом или голосом. Например: <code>молоко, хлеб, яйца</code>.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_keyboard(),
+    )
+
+
 async def _show_occurrence_list(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -327,6 +422,9 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     if await _maybe_apply_pending_reschedule(update, context, text):
         return
+    if text in ("🛒 Покупки", "Покупки", "Список покупок"):
+        await shopping(update, context)
+        return
     if text in ("📆 Сегодня", "Сегодня"):
         await today(update, context)
         return
@@ -348,6 +446,22 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if text in ("❔ Помощь", "Помощь"):
         await start(update, context)
         return
+    if _has_pending_shopping(context):
+        wait_message = await _safe_reply_text(update.message, "Обновляю список покупок...") if update.message else None
+        try:
+            handled = await _maybe_apply_pending_shopping(
+                update,
+                context,
+                text,
+                source_kind="text",
+                edit_message=wait_message,
+            )
+        except Exception:
+            log.exception("Pending shopping text failed")
+            await _safe_edit_message(wait_message, "Не смог обновить список покупок. Попробуй еще раз.")
+            return
+        if handled:
+            return
     await _preview_text_with_status(update, context, text, source_kind="text")
 
 
@@ -401,6 +515,22 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     log.info("Voice transcribed elapsed=%.2fs transcript=%r", perf_counter() - started, _short_log_text(transcript))
     await _safe_edit_message(wait_message, f"Распознал: {_short_log_text(transcript, 700)}\n\nРазбираю...")
+    if _has_pending_shopping(context):
+        try:
+            handled = await _maybe_apply_pending_shopping(
+                update,
+                context,
+                transcript,
+                source_kind="voice",
+                edit_message=wait_message,
+            )
+        except Exception:
+            log.exception("Pending shopping voice failed after transcription")
+            await _safe_edit_message(wait_message, "Распознал голосовое, но не смог обновить список покупок.")
+            return
+        if handled:
+            log.info("Voice processed as shopping update elapsed=%.2fs", perf_counter() - started)
+            return
     try:
         delivered_via_status = await _preview_from_text(
             update,
@@ -678,6 +808,143 @@ async def _apply_reschedule(
     )
 
 
+async def _first_upcoming_shopping_list(services: AppServices, *, now: datetime):
+    shopping_lists = getattr(services, "shopping_lists", None)
+    if shopping_lists is None:
+        return None
+    await asyncio.to_thread(services.events.materialize_all, now=now)
+    occurrences = await asyncio.to_thread(services.events.upcoming, now=now, limit=100)
+    for occurrence in occurrences:
+        detail = await asyncio.to_thread(shopping_lists.get_by_event_id, occurrence.event_id)
+        if detail:
+            return occurrence, detail
+    return None
+
+
+async def _maybe_apply_pending_shopping(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    *,
+    source_kind: str,
+    edit_message: Message | None = None,
+) -> bool:
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    _cleanup_pending(context, now=now)
+    pending_add = _pending_shopping_add(context)
+    pending_create = _pending_shopping_create(context)
+    if not pending_add and not pending_create:
+        return False
+
+    if text.casefold() in {"отмена", "cancel"}:
+        _clear_pending_shopping_add(context)
+        _clear_pending_shopping_create(context)
+        await _deliver_text(
+            update,
+            format_action_cancelled(),
+            edit_message=edit_message,
+            reply_markup=main_keyboard(),
+        )
+        return True
+
+    if pending_create:
+        _clear_pending_shopping_create(context)
+        shopping_text = text if looks_like_shopping_text(text) else f"купить {text}"
+        return await _preview_from_text(
+            update,
+            context,
+            shopping_text,
+            source_kind=source_kind,
+            edit_message=edit_message,
+        )
+
+    drafts = parse_shopping_items(text)
+    if not drafts:
+        try:
+            occurrence = await asyncio.to_thread(services.events.get_occurrence, pending_add.occurrence_id)
+            detail = await asyncio.to_thread(services.shopping_lists.get_by_id, pending_add.list_id)
+        except Exception:
+            log.exception("Pending shopping list not found occurrence_id=%s", pending_add.occurrence_id)
+            _clear_pending_shopping_add(context)
+            await _deliver_text(update, "Не нашел этот список покупок. Открой его заново.", edit_message=edit_message)
+            return True
+        await _deliver_text(
+            update,
+            "Не увидел товары. Пришли список через запятую, например: <code>сыр, кофе, яйца</code>.",
+            edit_message=edit_message,
+            parse_mode=ParseMode.HTML,
+            reply_markup=shopping_add_keyboard(occurrence_id=occurrence.occurrence_id),
+        )
+        _set_pending_shopping_add(context, pending_add)
+        return True
+
+    try:
+        detail = await asyncio.to_thread(
+            services.shopping_lists.add_items,
+            pending_add.list_id,
+            drafts,
+            source_text=text,
+            source_kind=source_kind,
+            now=now,
+        )
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, pending_add.occurrence_id)
+    except Exception as exc:
+        log.exception("Pending shopping add failed list_id=%s", pending_add.list_id)
+        await _deliver_text(update, f"Не смог добавить товары.\n\n{exc}", edit_message=edit_message)
+        return True
+
+    _clear_pending_shopping_add(context, occurrence_id=pending_add.occurrence_id)
+    log.info(
+        "Shopping items added list_id=%s occurrence_id=%s count=%s source_kind=%s raw=%r",
+        pending_add.list_id,
+        pending_add.occurrence_id,
+        len(drafts),
+        source_kind,
+        _short_log_text(text),
+    )
+    await _deliver_text(
+        update,
+        format_shopping_detail(detail, occurrence),
+        edit_message=edit_message,
+        parse_mode=ParseMode.HTML,
+        reply_markup=shopping_list_keyboard(detail, occurrence_id=occurrence.occurrence_id),
+    )
+    return True
+
+
+async def _shopping_occurrence_and_detail(services: AppServices, occurrence_id: str):
+    occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+    detail = await asyncio.to_thread(services.shopping_lists.get_by_event_id, occurrence.event_id)
+    if not detail:
+        raise ValueError(f"Shopping list not found for occurrence: {occurrence_id}")
+    return occurrence, detail
+
+
+async def _edit_shopping_list_callback(
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    occurrence_id: str,
+    already_answered: bool = False,
+) -> None:
+    services = _services(context)
+    try:
+        occurrence, detail = await _shopping_occurrence_and_detail(services, occurrence_id)
+    except Exception:
+        log.exception("Shopping list callback failed occurrence_id=%s", occurrence_id)
+        if not already_answered:
+            await query.answer("Не нашел список", show_alert=True)
+        return
+    if not already_answered:
+        await query.answer()
+    await query.edit_message_text(
+        format_shopping_detail(detail, occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=shopping_list_keyboard(detail, occurrence_id=occurrence_id),
+    )
+
+
 def _short_log_text(value: str, limit: int = 160) -> str:
     text = " ".join(value.split())
     if len(text) <= limit:
@@ -797,11 +1064,17 @@ async def notify_due(context: ContextTypes.DEFAULT_TYPE) -> None:
     jobs = await asyncio.to_thread(services.events.due_jobs, now=now, limit=20)
     for job in jobs:
         try:
+            shopping_detail = None
+            shopping_lists = getattr(services, "shopping_lists", None)
+            if shopping_lists is not None:
+                shopping_detail = await asyncio.to_thread(shopping_lists.get_by_event_id, job.event_id)
             message = await context.bot.send_message(
                 chat_id=owner_id,
-                text=format_due_notification(job),
+                text=format_shopping_due_notification(job, shopping_detail)
+                if shopping_detail
+                else format_due_notification(job),
                 parse_mode=ParseMode.HTML,
-                reply_markup=due_keyboard(job),
+                reply_markup=shopping_due_keyboard(job, shopping_detail) if shopping_detail else due_keyboard(job),
             )
         except Exception as exc:
             log.exception("Failed to send notification job_id=%s", job.job_id)
@@ -901,6 +1174,9 @@ async def hide_message_callback(update: Update, context: ContextTypes.DEFAULT_TY
     scope = (query.data or "").removeprefix(HIDE_MESSAGE_PREFIX) or "unknown"
     if scope.startswith("reschedule"):
         _clear_pending_reschedule(context)
+    if scope.startswith("shopping"):
+        _clear_pending_shopping_add(context)
+        _clear_pending_shopping_create(context)
     await query.answer("Скрыто")
     try:
         if query.message:
@@ -962,6 +1238,17 @@ async def occurrence_detail_callback(update: Update, context: ContextTypes.DEFAU
         log.exception("Occurrence detail failed")
         await query.answer("Не нашел это напоминание. Обнови список.", show_alert=True)
         return
+    shopping_lists = getattr(services, "shopping_lists", None)
+    if shopping_lists is not None:
+        shopping_detail = await asyncio.to_thread(shopping_lists.get_by_event_id, occurrence.event_id)
+        if shopping_detail:
+            await query.answer()
+            await query.edit_message_text(
+                format_shopping_detail(shopping_detail, occurrence),
+                parse_mode=ParseMode.HTML,
+                reply_markup=shopping_list_keyboard(shopping_detail, occurrence_id=occurrence.occurrence_id),
+            )
+            return
     await query.answer()
     await query.edit_message_text(
         format_occurrence_detail(occurrence),
@@ -993,6 +1280,123 @@ async def daily_agenda_toggle_callback(update: Update, context: ContextTypes.DEF
         parse_mode=ParseMode.HTML,
         reply_markup=daily_agenda_settings_keyboard(enabled=enabled),
     )
+
+
+async def shopping_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(SHOPPING_ADD_PREFIX)
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        occurrence, detail = await _shopping_occurrence_and_detail(services, occurrence_id)
+    except Exception:
+        log.exception("Shopping add prompt failed occurrence_id=%s", occurrence_id)
+        await query.answer("Не нашел список", show_alert=True)
+        return
+    _set_pending_shopping_add(
+        context,
+        PendingShoppingAdd(
+            list_id=detail.shopping_list.id,
+            occurrence_id=occurrence_id,
+            created_at=now,
+        ),
+    )
+    await query.answer("Жду товары")
+    await query.edit_message_text(
+        format_shopping_add_prompt(detail, occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=shopping_add_keyboard(occurrence_id=occurrence_id),
+    )
+
+
+async def shopping_add_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(SHOPPING_ADD_CANCEL_PREFIX)
+    _clear_pending_shopping_add(context, occurrence_id=occurrence_id)
+    await query.answer("Отмена")
+    await query.edit_message_text(format_action_cancelled())
+
+
+async def shopping_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    occurrence_id = (query.data or "").removeprefix(SHOPPING_BACK_PREFIX)
+    await _edit_shopping_list_callback(query, context, occurrence_id=occurrence_id)
+
+
+async def shopping_item_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(SHOPPING_ITEM_MENU_PREFIX)
+    try:
+        occurrence_id, item_id = payload.split(":", 1)
+    except ValueError:
+        await query.answer("Не понял товар", show_alert=True)
+        return
+    services = _services(context)
+    try:
+        occurrence = await asyncio.to_thread(services.events.get_occurrence, occurrence_id)
+        detail, item = await asyncio.to_thread(services.shopping_lists.get_by_item_id, item_id)
+    except Exception:
+        log.exception("Shopping item menu failed occurrence_id=%s item_id=%s", occurrence_id, item_id)
+        await query.answer("Не нашел товар", show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_text(
+        format_shopping_item_menu(detail, item, occurrence),
+        parse_mode=ParseMode.HTML,
+        reply_markup=shopping_item_keyboard(item, occurrence_id=occurrence_id),
+    )
+
+
+async def shopping_item_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(SHOPPING_ITEM_TOGGLE_PREFIX)
+    try:
+        occurrence_id, item_id = payload.split(":", 1)
+    except ValueError:
+        await query.answer("Не понял товар", show_alert=True)
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        await asyncio.to_thread(services.shopping_lists.toggle_item, item_id, now=now)
+    except Exception:
+        log.exception("Shopping item toggle failed occurrence_id=%s item_id=%s", occurrence_id, item_id)
+        await query.answer("Не изменил товар", show_alert=True)
+        return
+    await query.answer("Готово")
+    await _edit_shopping_list_callback(query, context, occurrence_id=occurrence_id, already_answered=True)
+
+
+async def shopping_item_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_non_owner(update, context):
+        return
+    query = update.callback_query
+    payload = (query.data or "").removeprefix(SHOPPING_ITEM_DELETE_PREFIX)
+    try:
+        occurrence_id, item_id = payload.split(":", 1)
+    except ValueError:
+        await query.answer("Не понял товар", show_alert=True)
+        return
+    services = _services(context)
+    now = local_now(services.settings.timezone)
+    try:
+        await asyncio.to_thread(services.shopping_lists.delete_item, item_id, now=now)
+    except Exception:
+        log.exception("Shopping item delete failed occurrence_id=%s item_id=%s", occurrence_id, item_id)
+        await query.answer("Не удалил товар", show_alert=True)
+        return
+    await query.answer("Удалено")
+    await _edit_shopping_list_callback(query, context, occurrence_id=occurrence_id, already_answered=True)
 
 
 async def reschedule_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1253,6 +1657,16 @@ async def confirm_reminder_callback(update: Update, context: ContextTypes.DEFAUL
     occurrences = await asyncio.to_thread(services.events.upcoming, now=now, limit=20)
     own_occurrences = [item for item in occurrences if item.event_id in set(result.event_ids)]
     await query.answer("Сохранено")
+    shopping_lists = getattr(services, "shopping_lists", None)
+    if len(own_occurrences) == 1 and shopping_lists is not None:
+        shopping_detail = await asyncio.to_thread(shopping_lists.get_by_event_id, own_occurrences[0].event_id)
+        if shopping_detail:
+            await query.edit_message_text(
+                format_shopping_detail(shopping_detail, own_occurrences[0]),
+                parse_mode=ParseMode.HTML,
+                reply_markup=shopping_list_keyboard(shopping_detail, occurrence_id=own_occurrences[0].occurrence_id),
+            )
+            return
     await query.edit_message_text(
         format_intake_result(result, own_occurrences),
         parse_mode=ParseMode.HTML,
@@ -1352,7 +1766,7 @@ async def clarify_cancel_callback(update: Update, context: ContextTypes.DEFAULT_
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await _reject_non_owner(update, context):
         return
-    await _answer_long(update, "Пока понимаю текст и голосовые напоминания.", reply_markup=main_keyboard())
+    await _answer_long(update, "Понимаю текст, голосовые напоминания и списки покупок.", reply_markup=main_keyboard())
 
 
 def build_application(settings: Settings, services: AppServices) -> Application:
@@ -1380,6 +1794,7 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CommandHandler("upcoming", upcoming))
     app.add_handler(CommandHandler("annual", annual))
     app.add_handler(CommandHandler("morning", daily_agenda_settings))
+    app.add_handler(CommandHandler("shopping", shopping))
     app.add_handler(CommandHandler("add", add_command))
     app.add_handler(CallbackQueryHandler(confirm_reminder_callback, pattern=f"^{CONFIRM_REMINDER_PREFIX}"))
     app.add_handler(CallbackQueryHandler(discard_reminder_callback, pattern=f"^{DISCARD_REMINDER_PREFIX}"))
@@ -1389,6 +1804,12 @@ def build_application(settings: Settings, services: AppServices) -> Application:
     app.add_handler(CallbackQueryHandler(occurrence_detail_callback, pattern=f"^{OCCURRENCE_DETAIL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(detail_cancel_callback, pattern=f"^{DETAIL_CANCEL_PREFIX}"))
     app.add_handler(CallbackQueryHandler(daily_agenda_toggle_callback, pattern=f"^{DAILY_AGENDA_TOGGLE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_add_callback, pattern=f"^{SHOPPING_ADD_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_add_cancel_callback, pattern=f"^{SHOPPING_ADD_CANCEL_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_back_callback, pattern=f"^{SHOPPING_BACK_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_item_menu_callback, pattern=f"^{SHOPPING_ITEM_MENU_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_item_toggle_callback, pattern=f"^{SHOPPING_ITEM_TOGGLE_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(shopping_item_delete_callback, pattern=f"^{SHOPPING_ITEM_DELETE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_menu_callback, pattern=f"^{RESCHEDULE_MENU_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_scope_callback, pattern=f"^{RESCHEDULE_SCOPE_PREFIX}"))
     app.add_handler(CallbackQueryHandler(reschedule_quick_callback, pattern=f"^{RESCHEDULE_QUICK_PREFIX}"))

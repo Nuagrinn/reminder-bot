@@ -8,6 +8,7 @@ from app.features.app_settings.service import AppSettingsService
 from app.features.events.service import EventDefaults, EventService
 from app.features.reminder_intake.factory import build_reminder_parser_agent
 from app.features.reminder_intake.service import ReminderIntakeService
+from app.features.shopping_lists.service import ShoppingListService
 
 
 class AppServices:
@@ -32,6 +33,7 @@ class AppServices:
                 materialize_days=settings.materialize_days,
             ),
         )
+        self.shopping_lists = ShoppingListService(self.db)
         self.parser = build_reminder_parser_agent(settings)
-        self.intake = ReminderIntakeService(self.db, self.parser, self.events)
+        self.intake = ReminderIntakeService(self.db, self.parser, self.events, self.shopping_lists)
         self.speech = build_speech_to_text(settings)

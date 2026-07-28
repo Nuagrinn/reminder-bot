@@ -6,7 +6,7 @@ Date: 2026-07-24
 
 1. Real parser quality - initial Claude path done
    - Local `.env` can run `PARSER_PROVIDER=claude_cli`.
-   - Prompt/schema version is `reminder-parser-v3`.
+   - Prompt/schema version is `reminder-parser-v4`.
    - Exact date/time parsing is verified through Claude CLI.
    - Recurring interval parsing is verified through Claude CLI.
    - Compact Claude output is normalized into the internal reminder schema.
@@ -167,6 +167,19 @@ Date: 2026-07-24
    - The title cleaner also strips date/time helper words like `сегодня
      вечером` before saving.
 
+15. Shopping list reminders - MVP done
+   - Shopping reminders reuse normal event scheduling and notification jobs.
+   - Shopping items are stored in separate `shopping_lists` and
+     `shopping_items` tables, not in event description text.
+   - Parser returns optional `content.kind=shopping_list` while keeping
+     `event_type=task`.
+   - Phrases like `купить молоко, хлеб, яйца` create a same-day shopping
+     reminder by default.
+   - Explicit time still works, for example `завтра в 14:00 купить молоко,
+     хлеб`.
+   - Telegram supports opening the list, item actions, soft delete and
+     voice/text add mode from the `Добавить` button.
+
 ## Feature Plans
 
 - [Compact Occurrence Lists UX](feature-plans/compact-occurrence-lists.md):
@@ -175,6 +188,8 @@ Date: 2026-07-24
 - [Event Context: Links And Locations](feature-plans/event-context-links-locations.md):
   MVP implemented for preserving URLs, meeting links and raw addresses with
   detail/due buttons.
+- [Shopping List Reminders](feature-plans/shopping-list-reminders.md):
+  MVP implemented for nested editable shopping lists inside scheduled reminders.
 
 ## Recommended Next Order
 
@@ -188,7 +203,11 @@ Date: 2026-07-24
 4. Revisit event context after real usage:
    - add link/address edit controls;
    - add optional geocoding for precise venue/location cards.
-5. Revisit Rich Messages as a second renderer once the Python Telegram library
+5. Improve shopping lists after real usage:
+   - natural-language delete/replace commands;
+   - several active lists selection;
+   - quantities and product normalization.
+6. Revisit Rich Messages as a second renderer once the Python Telegram library
    supports them or after a small raw Bot API experiment.
 
 ## P1 - Near Next

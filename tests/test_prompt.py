@@ -12,7 +12,7 @@ class PromptTest(TestCase):
     def test_prompt_contains_claude_recurrence_rules(self) -> None:
         prompt = build_system_prompt(request("каждые два дня проверять почту"))
 
-        self.assertEqual(PROMPT_VERSION, "reminder-parser-v3")
+        self.assertEqual(PROMPT_VERSION, "reminder-parser-v4")
         self.assertTrue(prompt.isascii())
         self.assertIn("temporal_profile", prompt)
         self.assertIn("moment_reminder", prompt)
@@ -23,6 +23,7 @@ class PromptTest(TestCase):
         self.assertIn("do not translate titles to English", prompt)
         self.assertIn("broad day parts", prompt)
         self.assertIn("context links/locations", prompt)
+        self.assertIn("shopping list content", prompt)
         self.assertIn("preserve links exactly", prompt)
         self.assertIn("YYYY-MM-DDTHH:MM:00", prompt)
 

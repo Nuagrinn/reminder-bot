@@ -7,6 +7,9 @@ from app.features.events.context import context_action_url
 from app.features.events.context import context_button_label
 from app.features.events.context import normalize_event_contexts
 from app.features.events.models import NotificationJobView, OccurrenceView
+from app.features.shopping_lists.models import SHOPPING_ITEM_DONE
+from app.features.shopping_lists.models import ShoppingItem
+from app.features.shopping_lists.models import ShoppingListDetail
 
 
 DONE_PREFIX = "done:"
@@ -31,6 +34,12 @@ DISCARD_REMINDER_PREFIX = "discard_reminder:"
 CLARIFY_PREFIX = "clarify:"
 CLARIFY_CANCEL_PREFIX = "clarify_cancel:"
 DETAIL_CANCEL_PREFIX = "detail_cancel:"
+SHOPPING_ADD_PREFIX = "shop_add:"
+SHOPPING_ADD_CANCEL_PREFIX = "shop_add_cancel:"
+SHOPPING_BACK_PREFIX = "shop_back:"
+SHOPPING_ITEM_MENU_PREFIX = "shop_item:"
+SHOPPING_ITEM_TOGGLE_PREFIX = "shop_toggle:"
+SHOPPING_ITEM_DELETE_PREFIX = "shop_delete:"
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -38,8 +47,8 @@ def main_keyboard() -> ReplyKeyboardMarkup:
         [
             ["📆 Сегодня", "🗓 Неделя"],
             ["📋 Ближайшие", "🗂 Месяц"],
-            ["🎂 Ежегодные", "🌅 Утро"],
-            ["❔ Помощь"],
+            ["🛒 Покупки", "🎂 Ежегодные"],
+            ["🌅 Утро", "❔ Помощь"],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -134,6 +143,85 @@ def occurrence_detail_keyboard(item: OccurrenceView | str) -> InlineKeyboardMark
     )
     return InlineKeyboardMarkup(
         rows
+    )
+
+
+def shopping_list_keyboard(detail: ShoppingListDetail, *, occurrence_id: str) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    item_row: list[InlineKeyboardButton] = []
+    for index, item in enumerate(detail.items[:20], start=1):
+        item_row.append(
+            InlineKeyboardButton(
+                str(index),
+                callback_data=f"{SHOPPING_ITEM_MENU_PREFIX}{occurrence_id}:{item.id}",
+            )
+        )
+        if len(item_row) == 5:
+            rows.append(item_row)
+            item_row = []
+    if item_row:
+        rows.append(item_row)
+    rows.extend(
+        [
+            [InlineKeyboardButton("Добавить", callback_data=f"{SHOPPING_ADD_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{occurrence_id}")],
+            [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{occurrence_id}")],
+            _hide_row("shopping_list"),
+        ]
+    )
+    return InlineKeyboardMarkup(rows)
+
+
+def shopping_due_keyboard(job: NotificationJobView, detail: ShoppingListDetail) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    item_row: list[InlineKeyboardButton] = []
+    for index, item in enumerate(detail.items[:20], start=1):
+        item_row.append(
+            InlineKeyboardButton(
+                str(index),
+                callback_data=f"{SHOPPING_ITEM_MENU_PREFIX}{job.occurrence_id}:{item.id}",
+            )
+        )
+        if len(item_row) == 5:
+            rows.append(item_row)
+            item_row = []
+    if item_row:
+        rows.append(item_row)
+    rows.extend(
+        [
+            [InlineKeyboardButton("Добавить", callback_data=f"{SHOPPING_ADD_PREFIX}{job.occurrence_id}")],
+            [InlineKeyboardButton("Готово", callback_data=f"{DONE_PREFIX}{job.occurrence_id}")],
+            [
+                InlineKeyboardButton("Напомнить +1ч", callback_data=f"{SNOOZE_PREFIX}{job.job_id}:60"),
+                InlineKeyboardButton("На завтра", callback_data=f"{RESCHEDULE_QUICK_PREFIX}{job.occurrence_id}:occ:tomorrow"),
+            ],
+            [InlineKeyboardButton("Перенести", callback_data=f"{RESCHEDULE_MENU_PREFIX}{job.occurrence_id}")],
+            [InlineKeyboardButton("Удалить", callback_data=f"{DELETE_MENU_PREFIX}{job.occurrence_id}")],
+            [InlineKeyboardButton("Скрыть", callback_data=f"{HIDE_NOTIFICATION_PREFIX}{job.job_id}")],
+        ]
+    )
+    return InlineKeyboardMarkup(rows)
+
+
+def shopping_item_keyboard(item: ShoppingItem, *, occurrence_id: str) -> InlineKeyboardMarkup:
+    toggle_label = "Вернуть" if item.status == SHOPPING_ITEM_DONE else "Куплено"
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(toggle_label, callback_data=f"{SHOPPING_ITEM_TOGGLE_PREFIX}{occurrence_id}:{item.id}")],
+            [InlineKeyboardButton("Удалить", callback_data=f"{SHOPPING_ITEM_DELETE_PREFIX}{occurrence_id}:{item.id}")],
+            [InlineKeyboardButton("Назад к списку", callback_data=f"{SHOPPING_BACK_PREFIX}{occurrence_id}")],
+            _hide_row("shopping_item"),
+        ]
+    )
+
+
+def shopping_add_keyboard(*, occurrence_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Отмена", callback_data=f"{SHOPPING_ADD_CANCEL_PREFIX}{occurrence_id}")],
+            _hide_row("shopping_add"),
+        ]
     )
 
 

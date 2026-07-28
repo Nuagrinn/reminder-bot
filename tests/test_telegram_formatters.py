@@ -218,7 +218,7 @@ class TelegramFormattersTest(TestCase):
         keyboard = shopping_list_keyboard(detail, occurrence_id=occurrence_item.occurrence_id)
 
         self.assertIn("<code>1 </code> □ молоко", text)
-        self.assertIn("<code>2 </code> ✓ хлеб", text)
+        self.assertIn("<code>2 </code> ✓ <s>хлеб</s>", text)
         self.assertEqual([button.text for button in keyboard.inline_keyboard[0]], ["1", "2"])
         self.assertEqual(keyboard.inline_keyboard[1][0].text, "Добавить")
         self.assertEqual(keyboard.inline_keyboard[2][0].text, "Готово")
@@ -366,6 +366,24 @@ class TelegramFormattersTest(TestCase):
         self.assertIn("<code>1 утро </code> ⚠️ Подключить Spotify подписку", text)
         self.assertIn("Подключить Spotify подписку\n\n<b>Пн 27.07 · сегодня</b>", text)
         self.assertIn("<code>2 вечер</code> Тренировка", text)
+
+    def test_done_occurrence_list_strikes_title(self) -> None:
+        anchor = date(2026, 7, 27)
+        item = occurrence_at(
+            "occ_done",
+            "Помыть машину",
+            datetime(2026, 7, 27, 9, 0),
+            all_day=True,
+            occurrence_status="done",
+        )
+        view = list_view([item], kind="today", title="Сегодня", anchor_date=anchor, days=1)
+
+        text = format_occurrence_list_view(view)
+        detail = format_occurrence_detail(item)
+
+        self.assertIn("<code>1      </code> ✓ <s>Помыть машину</s>", text)
+        self.assertIn("<b><s>Помыть машину</s></b>", detail)
+        self.assertIn("Статус: <code>выполнено</code>", detail)
 
     def test_annual_list_groups_events_by_month(self) -> None:
         anchor = date(2026, 7, 26)
@@ -571,6 +589,7 @@ def occurrence_at(
     all_day: bool = False,
     source_text: str = "",
     contexts: tuple[EventContext, ...] = (),
+    occurrence_status: str = "scheduled",
 ) -> OccurrenceView:
     return OccurrenceView(
         occurrence_id=occurrence_id,
@@ -580,7 +599,7 @@ def occurrence_at(
         event_type="task",
         occurs_at=occurs_at,
         occurrence_date=occurs_at.date().isoformat(),
-        occurrence_status="scheduled",
+        occurrence_status=occurrence_status,
         event_status="active",
         next_notify_at=None,
         all_day=all_day,

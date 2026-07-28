@@ -28,6 +28,7 @@ from app.features.notifications.policy import build_notification_rules
 
 ACTIVE = "active"
 SCHEDULED = "scheduled"
+DONE = "done"
 PENDING = "pending"
 
 
@@ -295,12 +296,13 @@ class EventService:
                 FROM event_occurrences eo
                 JOIN events e ON e.id = eo.event_id
                 LEFT JOIN notification_jobs nj ON nj.occurrence_id = eo.id
-                WHERE e.status = ?
-                  AND eo.status = ?
+                WHERE e.status IN (?, ?)
+                  AND eo.status IN (?, ?)
                   AND (
                     (eo.occurs_at >= ? AND eo.occurs_at <= ?)
                     OR (
                       ? = 1
+                      AND eo.status = ?
                       AND eo.occurs_at < ?
                       AND (
                         NOT EXISTS (
@@ -325,10 +327,13 @@ class EventService:
                 """,
                 (
                     ACTIVE,
+                    "completed",
                     SCHEDULED,
+                    DONE,
                     iso(start_at),
                     iso(end_at),
                     int(include_overdue),
+                    SCHEDULED,
                     iso(start_at),
                     iso(end_at),
                     max(1, min(100, limit)),
@@ -516,20 +521,6 @@ class EventService:
                 "UPDATE event_occurrences SET status = 'done' WHERE id = ?",
                 (occurrence_id,),
             )
-            row = conn.execute(
-                """
-                SELECT e.id, e.recurrence_json
-                FROM events e
-                JOIN event_occurrences eo ON eo.event_id = e.id
-                WHERE eo.id = ?
-                """,
-                (occurrence_id,),
-            ).fetchone()
-            if row and json.loads(row["recurrence_json"] or "{}").get("frequency") == "none":
-                conn.execute(
-                    "UPDATE events SET status = 'completed', updated_at = ? WHERE id = ?",
-                    (iso(now), row["id"]),
-                )
             conn.execute(
                 """
                 UPDATE notification_jobs

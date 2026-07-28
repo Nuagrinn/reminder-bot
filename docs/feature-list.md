@@ -75,6 +75,9 @@ Date: 2026-07-24
      while exact user-provided clock times remain `HH:MM`.
    - List rows use a compact table-like left cell:
      number + time/part-of-day, then the title as normal text.
+   - Completed occurrences stay visible in their day/week/month lists with a
+     check mark and strikethrough title. Only explicit delete/cancel removes
+     them from the list.
    - `Ежегодные` is a semantic annual-series view, not a long month range:
      it shows the next occurrence of yearly events and materializes it when it
      is beyond the normal 180-day horizon.

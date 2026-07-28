@@ -164,6 +164,46 @@ class EventServiceTests(unittest.TestCase):
         self.assertEqual(upcoming[0].occurs_at, datetime(2026, 7, 24, 9, 0))
         self.assertEqual(upcoming[0].title, "Вытащить кошачий корм из машины")
 
+    def test_done_one_off_stays_in_day_list_until_deleted(self) -> None:
+        now = datetime(2026, 7, 24, 12, 0)
+        self._create_at("надо сегодня помыть машину", now=now)
+        today_start = datetime(2026, 7, 24, 0, 0)
+        today_end = datetime(2026, 7, 24, 23, 59, 59)
+        occurrence = self.service.list_occurrences(start_at=today_start, end_at=today_end, limit=10)[0]
+
+        self.service.complete_occurrence(occurrence.occurrence_id, now=now)
+        done_today = self.service.list_occurrences(start_at=today_start, end_at=today_end, limit=10)
+        event = self.service.get_event(occurrence.event_id)
+
+        self.assertEqual(len(done_today), 1)
+        self.assertEqual(done_today[0].occurrence_status, "done")
+        self.assertEqual(done_today[0].event_status, "active")
+        self.assertEqual(event.status, "active")
+
+        self.service.cancel_occurrence(occurrence.occurrence_id, now=now)
+        after_delete = self.service.list_occurrences(start_at=today_start, end_at=today_end, limit=10)
+
+        self.assertEqual(after_delete, [])
+
+    def test_done_past_occurrence_does_not_carry_over_as_overdue(self) -> None:
+        yesterday = datetime(2026, 7, 24, 12, 0)
+        self._create_at("надо сегодня помыть машину", now=yesterday)
+        occurrence = self.service.list_occurrences(
+            start_at=datetime(2026, 7, 24, 0, 0),
+            end_at=datetime(2026, 7, 24, 23, 59, 59),
+            limit=10,
+        )[0]
+        self.service.complete_occurrence(occurrence.occurrence_id, now=yesterday)
+
+        today = self.service.list_occurrences(
+            start_at=datetime(2026, 7, 25, 0, 0),
+            end_at=datetime(2026, 7, 25, 23, 59, 59),
+            limit=10,
+            include_overdue=True,
+        )
+
+        self.assertEqual(today, [])
+
     def test_snooze_creates_new_pending_job(self) -> None:
         self._create("через 2 часа проверить духовку")
         due_at_event = datetime(2026, 7, 24, 14, 0)

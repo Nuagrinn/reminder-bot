@@ -136,12 +136,15 @@ def format_occurrence_list_view(view: OccurrenceListView) -> str:
 
 
 def format_occurrence_detail(item: OccurrenceView) -> str:
+    title = _format_occurrence_title(item, done_prefix=False)
     lines = [
         "<b>Напоминание</b>",
         "",
-        f"<b>{h(item.title)}</b>",
+        f"<b>{title}</b>",
         f"Когда: <code>{occurrence_when_label(item)}</code>",
     ]
+    if _is_done_occurrence(item):
+        lines.append("Статус: <code>выполнено</code>")
     if item.next_notify_at:
         lines.append(f"Следующее уведомление: <code>{_date_time_label(item.next_notify_at)}</code>")
     lines.extend(_context_lines(item.contexts))
@@ -354,13 +357,25 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
     marker = annual_day_label(item) if view.kind == "annual" else compact_time_prefix(item)
     marker_width = 5
     cell = f"{index} {marker:<{marker_width}}"
-    title = h(item.title)
+    title = _format_occurrence_title(item)
     if is_overdue_occurrence(item, view):
         title = f"⚠️ {title}"
     marker = context_kind_marker(item.contexts)
     if marker:
         title = f"{h(marker)} <b>{title}</b>"
     return f"<code>{h(cell)}</code> {title}"
+
+
+def _format_occurrence_title(item: OccurrenceView, *, done_prefix: bool = True) -> str:
+    title = h(item.title)
+    if not _is_done_occurrence(item):
+        return title
+    prefix = "✓ " if done_prefix else ""
+    return f"{prefix}<s>{title}</s>"
+
+
+def _is_done_occurrence(item: OccurrenceView) -> bool:
+    return item.occurrence_status == "done"
 
 
 def _shopping_parse_items(item: dict[str, Any]) -> list[dict[str, str]]:
@@ -408,7 +423,11 @@ def _shopping_detail_lines(detail: ShoppingListDetail, *, open_first: bool = Fal
     for index, item in enumerate(items[:20], start=1):
         marker = "✓" if item.status == SHOPPING_ITEM_DONE else "□"
         title = _shopping_item_title(item)
-        lines.append(f"<code>{index:<2}</code> {marker} {h(title)}")
+        if item.status == SHOPPING_ITEM_DONE:
+            title = f"<s>{h(title)}</s>"
+        else:
+            title = h(title)
+        lines.append(f"<code>{index:<2}</code> {marker} {title}")
     if len(items) > 20:
         lines.append(f"...и еще {len(items) - 20}")
     return lines

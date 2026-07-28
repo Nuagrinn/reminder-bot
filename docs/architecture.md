@@ -156,6 +156,11 @@ just the title/date instead. If the source phrase used a broad day part such as
 `утром` or `вечером`, Telegram displays that short human label instead of the
 internal anchor time. Exact clock times remain visible as `HH:MM`.
 
+Completed occurrences stay visible inside the period where they belong and are
+rendered as done with a check mark and strikethrough title. Explicit delete or
+cancel actions are the only list actions that remove an occurrence from the
+view.
+
 Empty list states are explicit and short, for example `На сегодня событий нет`.
 
 ## Event Context

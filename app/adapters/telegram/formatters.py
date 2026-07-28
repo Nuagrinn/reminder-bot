@@ -287,7 +287,7 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
         title = f"⚠️ {title}"
     marker = context_kind_marker(item.contexts)
     if marker:
-        title = f"{title} · {h(marker)}"
+        title = f"{h(marker)} <b>{title}</b>"
     return f"<code>{h(cell)}</code> {title}"
 
 

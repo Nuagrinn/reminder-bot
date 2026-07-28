@@ -210,8 +210,8 @@ class TelegramFormattersTest(TestCase):
 
         text = format_occurrence_list(items, title="Сегодня", empty_text="Пусто")
 
-        self.assertIn("Собес/скрининг · ссылка", text)
-        self.assertIn("Встреча · адрес", text)
+        self.assertIn("🔗 <b>Собес/скрининг</b>", text)
+        self.assertIn("📍 <b>Встреча</b>", text)
 
     def test_all_day_occurrence_list_hides_internal_nine_am_anchor(self) -> None:
         item = all_day_occurrence()

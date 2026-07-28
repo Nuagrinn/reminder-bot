@@ -138,10 +138,10 @@ def context_kind_marker(contexts: tuple[Any, ...] | list[Any]) -> str:
     has_address = any(_context_attr(item, "kind") == CONTEXT_ADDRESS for item in contexts)
     markers = []
     if has_link:
-        markers.append("ссылка")
+        markers.append("🔗")
     if has_address:
-        markers.append("адрес")
-    return " · ".join(markers)
+        markers.append("📍")
+    return "".join(markers)
 
 
 def _contexts_from_payload(value: Any) -> list[dict[str, str]]:

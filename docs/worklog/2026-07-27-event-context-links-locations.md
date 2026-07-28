@@ -16,7 +16,7 @@
   - saved result;
   - occurrence detail;
   - due notification;
-  - compact list markers `· ссылка` / `· адрес`.
+  - compact list markers `🔗` / `📍`.
 - Добавили inline URL/map buttons:
   - `Открыть: Телемост`, `Открыть: Google Meet`, etc.;
   - `Открыть карту` для адресов через Yandex Maps search.
@@ -54,3 +54,10 @@
   `.venv\Scripts\python.exe -m unittest discover -s tests`.
 
 На момент записи прогон был зеленым.
+
+## 2026-07-28 UX follow-up
+
+- Заменили малозаметный suffix `· ссылка` / `· адрес` на front marker перед
+  названием события.
+- В списках строки с контекстом теперь выделяют title жирным:
+  `🔗 Собес/скрининг`, `📍 Встреча`.

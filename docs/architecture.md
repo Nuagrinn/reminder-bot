@@ -168,9 +168,9 @@ title cleaner removes URLs and helper phrases like `ссылка в телемо
 `адрес: ...` before saving the event title.
 
 Occurrence and due-job views attach event contexts after the main SQLite query.
-Telegram lists stay compact and show only `· ссылка` / `· адрес`; confirmation,
-saved result, detail cards and due notifications show the short context line and
-add URL/map buttons.
+Telegram lists stay compact and show context as front markers (`🔗` / `📍`) with
+a bolded title; confirmation, saved result, detail cards and due notifications
+show the short context line and add URL/map buttons.
 
 ## Annual Events View
 

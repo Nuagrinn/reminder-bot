@@ -764,6 +764,33 @@ Date: 2026-07-24
 - Added formatter regression tests for the new notification callbacks and
   overdue list rendering.
 
+## Recurring Series UX In Upcoming Lists
+
+- Investigated a real monthly-series UX issue:
+  - a reminder like `каждое 5ое число каждого месяца отправить 120$ Егору`
+    is stored correctly as one recurring event;
+  - the event service materializes future occurrences as separate rows for the
+    scheduler;
+  - Telegram confirmation and `/upcoming` previously showed those rows as if
+    they were many independent reminders.
+- Updated save confirmation:
+  - groups created occurrences by `event_id`;
+  - shows one summary per created event;
+  - recurring summaries use `Ближайшее` plus `Повтор`, for example
+    `каждый месяц: 5 числа`.
+- Updated `/upcoming` / `Ближайшие`:
+  - keeps the first visible occurrence per recurring series;
+  - hides later materialized repeats of the same `event_id`;
+  - fetches a larger internal candidate set before collapsing, so one dense
+    daily/monthly series does not push other later events out of the overview;
+  - shows `Повторы свернуты: N` when repeats were hidden.
+- Scope decision:
+  - `/upcoming` is an overview surface and should stay compact;
+  - `/today`, `/week`, `/month`, `/annual` remain calendar-range surfaces and
+    keep concrete occurrences inside the selected period.
+- Added regression tests for recurring save confirmation and upcoming series
+  collapse.
+
 ## Notes
 
 - GitHub repository `Nuagrinn/reminder-bot` was connected after implementation

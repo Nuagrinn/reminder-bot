@@ -136,6 +136,19 @@ Initial defaults:
 - `/month`: page size 10;
 - `/annual`: page size 10.
 
+Recurring-series handling:
+
+- `/upcoming` is an overview, so it shows only the first visible occurrence per
+  event series and displays `Повторы свернуты: N` when later materialized
+  repeats are hidden.
+- The overview should fetch more candidates than the visible page before
+  collapsing, otherwise one dense recurring series can crowd out later unique
+  reminders.
+- `/today`, `/week`, `/month` remain calendar-range views and keep concrete
+  occurrences that belong to the selected range.
+- Confirmation after saving a recurring reminder must summarize the series once
+  instead of listing every materialized occurrence.
+
 The callback payload must include enough data to rebuild the same page:
 
 - list kind: `today`, `week`, `month`, `upcoming`, `annual`, `agenda`;

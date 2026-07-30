@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
@@ -11,6 +11,7 @@ from app.features.events.models import OccurrenceView
 from app.features.reminder_intake.agent import ReminderParseRequest, ReminderParseResult
 from app.telegram_bot import (
     _build_occurrence_list_view,
+    _collapse_repeated_event_occurrences,
     _deliver_text,
     _format_version_update_text,
     configure_logging,
@@ -136,6 +137,52 @@ class TelegramDeliveryTest(IsolatedAsyncioTestCase):
 
         self.assertEqual([view.kind for view in views], ["today", "week", "month", "upcoming", "agenda", "annual"])
         self.assertTrue(all(view.page_size == 10 for view in views))
+
+    async def test_upcoming_builder_collapses_repeated_series_occurrences(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0)
+        items = [
+            fake_occurrence("occ_1", "Разовая задача", datetime(2026, 7, 31, 9, 0)),
+            fake_occurrence("occ_2", "Отправить 120$ Егору", datetime(2026, 8, 5, 9, 0), event_id="evt_monthly"),
+            fake_occurrence("occ_3", "Отправить 120$ Егору", datetime(2026, 9, 5, 9, 0), event_id="evt_monthly"),
+            fake_occurrence("occ_4", "Отправить 120$ Егору", datetime(2026, 10, 5, 9, 0), event_id="evt_monthly"),
+        ]
+        services = FakeServices(items=items)
+
+        view = await _build_occurrence_list_view(services, kind="upcoming", now=now)
+
+        self.assertEqual([item.occurrence_id for item in view.items], ["occ_1", "occ_2"])
+        self.assertEqual(view.collapsed_count, 2)
+
+    async def test_upcoming_builder_fetches_past_many_repeated_occurrences(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0)
+        repeated = [
+            fake_occurrence(
+                f"occ_daily_{index}",
+                "Ежедневный отчет",
+                now.replace(hour=9, minute=0) + timedelta(days=index),
+                event_id="evt_daily",
+            )
+            for index in range(120)
+        ]
+        later_unique = fake_occurrence("occ_later", "Редкая задача", now + timedelta(days=150))
+        services = FakeServices(items=[*repeated, later_unique])
+
+        view = await _build_occurrence_list_view(services, kind="upcoming", now=now)
+
+        self.assertEqual([item.occurrence_id for item in view.items], ["occ_daily_0", "occ_later"])
+        self.assertEqual(view.collapsed_count, 119)
+
+    def test_repeated_occurrence_collapse_keeps_first_item_per_event(self) -> None:
+        items = [
+            fake_occurrence("occ_1", "Разовая задача", datetime(2026, 7, 31, 9, 0)),
+            fake_occurrence("occ_2", "Отправить 120$ Егору", datetime(2026, 8, 5, 9, 0), event_id="evt_monthly"),
+            fake_occurrence("occ_3", "Отправить 120$ Егору", datetime(2026, 9, 5, 9, 0), event_id="evt_monthly"),
+        ]
+
+        visible, collapsed_count = _collapse_repeated_event_occurrences(items)
+
+        self.assertEqual([item.occurrence_id for item in visible], ["occ_1", "occ_2"])
+        self.assertEqual(collapsed_count, 1)
 
     async def test_clarification_callback_acknowledges_before_slow_parse(self) -> None:
         message = FakeDeletableMessage()
@@ -374,10 +421,16 @@ class FakeTextIntake:
         )
 
 
-def fake_occurrence(occurrence_id: str, title: str, occurs_at: datetime) -> OccurrenceView:
+def fake_occurrence(
+    occurrence_id: str,
+    title: str,
+    occurs_at: datetime,
+    *,
+    event_id: str | None = None,
+) -> OccurrenceView:
     return OccurrenceView(
         occurrence_id=occurrence_id,
-        event_id=f"evt_{occurrence_id}",
+        event_id=event_id or f"evt_{occurrence_id}",
         title=title,
         description="",
         event_type="task",

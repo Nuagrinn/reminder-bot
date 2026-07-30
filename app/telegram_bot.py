@@ -114,6 +114,7 @@ log = logging.getLogger(__name__)
 PENDING_TTL_MINUTES = 30
 PENDING_RESCHEDULE_TTL_MINUTES = 15
 PENDING_SHOPPING_TTL_MINUTES = 15
+UPCOMING_FETCH_LIMIT = 500
 
 
 @dataclass(frozen=True)
@@ -981,10 +982,11 @@ async def _build_occurrence_list_view(
             services,
             now=now,
             days=days,
-            limit=100,
+            limit=UPCOMING_FETCH_LIMIT,
             anchor_date=anchor,
             materialize=False,
         )
+        items, collapsed_count = _collapse_repeated_event_occurrences(items)
         return OccurrenceListView(
             kind=kind,
             title="Ближайшие",
@@ -995,6 +997,7 @@ async def _build_occurrence_list_view(
             range_end=anchor + timedelta(days=days),
             page=page,
             page_size=DEFAULT_LIST_PAGE_SIZE,
+            collapsed_count=collapsed_count,
         )
 
     range_configs = {
@@ -1054,6 +1057,21 @@ async def _occurrences_for_range(
         limit=limit,
         include_overdue=include_overdue,
     )
+
+
+def _collapse_repeated_event_occurrences(items: list) -> tuple[list, int]:
+    seen: set[str] = set()
+    visible = []
+    collapsed_count = 0
+    for item in items:
+        event_id = getattr(item, "event_id", "")
+        if event_id and event_id in seen:
+            collapsed_count += 1
+            continue
+        if event_id:
+            seen.add(event_id)
+        visible.append(item)
+    return visible, collapsed_count
 
 
 async def notify_due(context: ContextTypes.DEFAULT_TYPE) -> None:

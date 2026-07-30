@@ -9,6 +9,7 @@ from app.adapters.telegram.formatters import (
     format_daily_agenda_settings,
     format_daily_agenda_toggled,
     format_due_notification,
+    format_intake_result,
     format_occurrence_detail,
     format_occurrence_list,
     format_occurrence_list_view,
@@ -57,6 +58,7 @@ from app.features.events.service import EventDefaults
 from app.features.notifications.policy import annotate_notification_preview
 from app.features.events.models import NotificationJobView, OccurrenceView
 from app.features.reminder_intake.agent import FakeReminderParserAgent, ReminderParseResult
+from app.features.reminder_intake.service import IntakeResult
 from app.features.shopping_lists.models import SHOPPING_ITEM_DONE
 from app.features.shopping_lists.models import ShoppingItem
 from app.features.shopping_lists.models import ShoppingList
@@ -100,6 +102,53 @@ class TelegramFormattersTest(TestCase):
         text = format_parse_confirmation(parse_result)
 
         self.assertIn("каждые 2 дня", text)
+
+    def test_saved_recurring_result_shows_one_series_summary(self) -> None:
+        parse_result = ReminderParseResult(
+            payload={
+                "intent": "create",
+                "status": "ok",
+                "items": [
+                    {
+                        "title": "Отправить 120$ Егору",
+                        "schedule": {
+                            "date": "2026-08-05",
+                            "recurrence": {"frequency": "monthly", "interval": 1, "month_days": [5]},
+                        },
+                        "notification_offsets": [{"minutes_before": 780}],
+                    }
+                ],
+            },
+            provider="test",
+            model="test",
+        )
+        result = IntakeResult(parse_result=parse_result, event_ids=["evt_monthly"])
+        occurrences = [
+            occurrence_at(
+                "occ_monthly_aug",
+                "Отправить 120$ Егору",
+                datetime(2026, 8, 5, 9, 0),
+                event_id="evt_monthly",
+                all_day=True,
+                next_notify_at=datetime(2026, 8, 4, 20, 0),
+            ),
+            occurrence_at(
+                "occ_monthly_sep",
+                "Отправить 120$ Егору",
+                datetime(2026, 9, 5, 9, 0),
+                event_id="evt_monthly",
+                all_day=True,
+                next_notify_at=datetime(2026, 9, 4, 20, 0),
+            ),
+        ]
+
+        text = format_intake_result(result, occurrences)
+
+        self.assertEqual(text.count("• <b>Отправить 120$ Егору</b>"), 1)
+        self.assertIn("Ближайшее: <code>05.08.2026", text)
+        self.assertIn("Повтор: <code>каждый месяц: 5 числа</code>", text)
+        self.assertIn("Напомню: <code>04.08.2026 20:00</code>", text)
+        self.assertNotIn("05.09.2026", text)
 
     def test_confirmation_keyboard_uses_pending_id(self) -> None:
         keyboard = confirmation_keyboard("pending_123")
@@ -444,6 +493,28 @@ class TelegramFormattersTest(TestCase):
         self.assertEqual([button.text for button in keyboard.inline_keyboard[0]], ["1", "2"])
         self.assertEqual(keyboard.inline_keyboard[1][1].text, "2/2")
 
+    def test_upcoming_list_mentions_collapsed_recurring_occurrences(self) -> None:
+        anchor = date(2026, 7, 30)
+        items = [
+            occurrence_at("occ_once", "Разовая задача", datetime(2026, 7, 31, 9, 0), all_day=True),
+            occurrence_at("occ_monthly_aug", "Отправить 120$ Егору", datetime(2026, 8, 5, 9, 0), all_day=True),
+        ]
+        view = list_view(
+            items,
+            kind="upcoming",
+            title="Ближайшие",
+            anchor_date=anchor,
+            days=180,
+            collapsed_count=5,
+        )
+
+        text = format_occurrence_list_view(view)
+
+        self.assertIn("Всего: <b>2</b>", text)
+        self.assertIn("Повторы свернуты: <b>5</b>", text)
+        self.assertIn("Разовая задача", text)
+        self.assertIn("Отправить 120$ Егору", text)
+
     def test_occurrence_detail_keyboard_has_done_and_delete(self) -> None:
         keyboard = occurrence_detail_keyboard("occ_1")
 
@@ -586,14 +657,16 @@ def occurrence_at(
     title: str,
     occurs_at: datetime,
     *,
+    event_id: str | None = None,
     all_day: bool = False,
     source_text: str = "",
     contexts: tuple[EventContext, ...] = (),
     occurrence_status: str = "scheduled",
+    next_notify_at: datetime | None = None,
 ) -> OccurrenceView:
     return OccurrenceView(
         occurrence_id=occurrence_id,
-        event_id=f"evt_{occurrence_id}",
+        event_id=event_id or f"evt_{occurrence_id}",
         title=title,
         description="",
         event_type="task",
@@ -601,7 +674,7 @@ def occurrence_at(
         occurrence_date=occurs_at.date().isoformat(),
         occurrence_status=occurrence_status,
         event_status="active",
-        next_notify_at=None,
+        next_notify_at=next_notify_at,
         all_day=all_day,
         source_text=source_text,
         contexts=contexts,
@@ -691,6 +764,7 @@ def list_view(
     days: int | None = None,
     page: int = 0,
     force_year: bool = False,
+    collapsed_count: int = 0,
 ) -> OccurrenceListView:
     return OccurrenceListView(
         kind=kind,
@@ -702,4 +776,5 @@ def list_view(
         range_end=anchor_date + timedelta(days=days) if days else None,
         page=page,
         force_year=force_year,
+        collapsed_count=collapsed_count,
     )

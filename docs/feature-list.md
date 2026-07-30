@@ -87,6 +87,10 @@ Date: 2026-07-24
      next pending reminder falls into the requested period. This keeps a task
      visible after pressing notification snooze like `Завтра`, even though the
      original event date stays in the past.
+   - `Ближайшие` collapses further occurrences of the same recurring series:
+     the first upcoming occurrence stays visible, and the card shows how many
+     later repeats were hidden. Week/month/day views still show concrete
+     occurrences inside their own calendar ranges.
 
 7. Reschedule reminders - done
    - One-off reminders can be moved from the detail card.

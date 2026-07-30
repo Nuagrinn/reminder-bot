@@ -37,6 +37,7 @@ class OccurrenceListView:
     page: int = 0
     page_size: int = DEFAULT_LIST_PAGE_SIZE
     force_year: bool = False
+    collapsed_count: int = 0
 
     @property
     def total_count(self) -> int:

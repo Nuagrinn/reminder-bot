@@ -85,11 +85,16 @@ def format_intake_result(result: IntakeResult, occurrences: list[OccurrenceView]
         for index, event_id in enumerate(result.event_ids)
         if index < len(parse_items)
     }
-    for occurrence in occurrences[:10]:
-        shopping_items = _shopping_parse_items(item_by_event_id.get(occurrence.event_id, {}))
+    for occurrence in _first_occurrences_by_event(occurrences)[:10]:
+        parse_item = item_by_event_id.get(occurrence.event_id, {})
+        shopping_items = _shopping_parse_items(parse_item)
         title = "Покупки" if shopping_items else occurrence.title
+        repeat = _recurrence_label(parse_item)
         lines.append(f"• <b>{h(title)}</b>")
-        lines.append(f"  Событие: <code>{occurrence_when_label(occurrence)}</code>")
+        when_title = "Ближайшее" if repeat else "Событие"
+        lines.append(f"  {when_title}: <code>{occurrence_when_label(occurrence)}</code>")
+        if repeat:
+            lines.append(f"  Повтор: <code>{h(repeat)}</code>")
         if shopping_items:
             lines.extend(_shopping_parse_item_lines(shopping_items, prefix="  "))
         lines.extend(_context_lines(occurrence.contexts, prefix="  "))
@@ -120,6 +125,8 @@ def format_occurrence_list_view(view: OccurrenceListView) -> str:
             f"Показано: <b>{view.page_start_number}-{view.page_end_number}</b> "
             f"из <b>{view.total_count}</b>"
         )
+    if view.collapsed_count:
+        lines.append(f"Повторы свернуты: <b>{view.collapsed_count}</b>")
     lines.append("")
 
     current_group: date | tuple[int, int] | None = None
@@ -366,6 +373,17 @@ def _format_occurrence_list_row(index: int, item: OccurrenceView, view: Occurren
     return f"<code>{h(cell)}</code> {title}"
 
 
+def _first_occurrences_by_event(occurrences: list[OccurrenceView]) -> list[OccurrenceView]:
+    seen: set[str] = set()
+    result: list[OccurrenceView] = []
+    for occurrence in occurrences:
+        if occurrence.event_id in seen:
+            continue
+        seen.add(occurrence.event_id)
+        result.append(occurrence)
+    return result
+
+
 def _format_occurrence_title(item: OccurrenceView, *, done_prefix: bool = True) -> str:
     title = h(item.title)
     if not _is_done_occurrence(item):
@@ -519,20 +537,21 @@ def _recurrence_label(item: dict[str, Any]) -> str:
     if frequency == "none":
         return ""
     interval = int(recurrence.get("interval") or 1)
-    every = "" if interval == 1 else f"каждые {interval} "
     if frequency == "daily":
         if interval == 1:
             return "каждый день"
-        return f"{every}{_day_plural(interval)}"
+        return f"каждые {interval} {_day_plural(interval)}"
     if frequency == "weekly":
         weekdays = recurrence.get("weekdays") or []
-        days = ", ".join(_weekday_label(str(day)) for day in weekdays) if weekdays else "неделю"
-        return f"{every}неделю: {days}"
+        base = "каждую неделю" if interval == 1 else f"каждые {interval} {_plural(interval, 'неделю', 'недели', 'недель')}"
+        days = ", ".join(_weekday_label(str(day)) for day in weekdays)
+        return f"{base}: {days}" if days else base
     if frequency == "monthly":
         month_days = recurrence.get("month_days") or []
+        base = "каждый месяц" if interval == 1 else f"каждые {interval} {_plural(interval, 'месяц', 'месяца', 'месяцев')}"
         if month_days:
-            return f"{every}месяц: {', '.join(str(day) for day in month_days)} числа"
-        return f"{every}месяц"
+            return f"{base}: {', '.join(str(day) for day in month_days)} числа"
+        return base
     if frequency == "yearly":
         months = recurrence.get("months") or []
         month_days = recurrence.get("month_days") or []
@@ -585,11 +604,15 @@ def _weekday_label(value: str) -> str:
 
 
 def _day_plural(value: int) -> str:
+    return _plural(value, "день", "дня", "дней")
+
+
+def _plural(value: int, one: str, few: str, many: str) -> str:
     if value % 10 == 1 and value % 100 != 11:
-        return "день"
+        return one
     if 2 <= value % 10 <= 4 and not 12 <= value % 100 <= 14:
-        return "дня"
-    return "дней"
+        return few
+    return many
 
 
 def _h_option(value: object) -> str:

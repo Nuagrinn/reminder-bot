@@ -221,6 +221,25 @@ visible in `Ежегодные` even if it is too far away for `/month` or `/upc
 The created occurrence uses the same notification rules as the event, so annual
 defaults (`за неделю`, `вечером за день`, `утром в день`) stay consistent.
 
+## Recurring Series In Telegram Lists
+
+The storage layer keeps recurring reminders as one event plus many materialized
+occurrences. Telegram should not make that internal shape look like many
+different reminders.
+
+Confirmation after saving a recurring reminder therefore shows one series
+summary:
+
+- nearest concrete occurrence;
+- recurrence label, for example `каждый месяц: 5 числа`;
+- next notification time.
+
+`/upcoming` and the reply button `📋 Ближайшие` are overview surfaces. They show
+only the first visible occurrence per `event_id` and add `Повторы свернуты: N`
+when later occurrences of the same series are hidden. Calendar-range surfaces
+(`/today`, `/week`, `/month`, `/annual`) still show concrete occurrences that
+belong to their selected period.
+
 ## Parser Normalization Guard
 
 Claude is instructed to preserve the source language and script in `title` and
@@ -236,7 +255,7 @@ Due notification cards are action-oriented:
 
 - `Готово`: completes the occurrence.
 - `Через 1 час`: snoozes this notification job for one hour.
-- `Завтра`: snoozes this notification job for one day.
+- `Завтра`: moves this occurrence to tomorrow.
 - `Перенести`: opens the reschedule flow for the occurrence.
 - `Удалить`: opens immediate/scoped deletion depending on recurrence.
 - `Скрыть`: deletes only the Telegram card. The occurrence and stored reminder
